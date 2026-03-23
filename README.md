@@ -4,7 +4,7 @@ https://moosry.github.io/UhelpU_p5jsGameDemo/
 
 # U HELP U开发中
 
-## 目前已知且正在修改的bug
+## 目前已知且正在修改的bug ##
 
 1.level1按键提示错误（原本要加level3，内有梯子，所以把按键改成WS上下梯子，空格为跳了，后续把梯子删除之后按键还没有改过来
 
