@@ -90,7 +90,17 @@ export class GamePageLevel3 extends PageBase {
     // 游戏绘制由 main.js 的 levelManager.update() 驱动
   }
 
+  enter(p) {
+    // 调试输出，确认 enter 被调用
+    // eslint-disable-next-line no-console
+    console.log('GamePageLevel3 enter called');
+    if (super.enter) super.enter(p);
+  }
+
   exit() {
+    // 调试输出，确认 exit 被调用
+    // eslint-disable-next-line no-console
+    console.log('GamePageLevel3 exit called');
     document.removeEventListener("keydown", this._onKeyDown);
     if (this._windowHint) this._windowHint.remove();
     if (this._windowSetting) this._windowSetting.remove();

@@ -6,14 +6,24 @@ export class Clip {
         this.startX = startX;
         this.startY = startY;
         this.records = [];
-        this.recordStartTime = recordStartTime;//
+        this.recordStartTime = recordStartTime;
 
+        // 自动收集所有 relevant intent 的按键
         const keyBindingManager = KeyBindingManager.getInstance();
-        this.allowedKeys = new Set([
-            keyBindingManager.getKeyByIntent("jump"),
-            keyBindingManager.getKeyByIntent("moveLeft"),
-            keyBindingManager.getKeyByIntent("moveRight"),
-        ].filter(Boolean));
+        // 梯子相关意图，若无专门意图则直接加 KeyW/KeyS
+        const relevantIntents = [
+            "jump", "moveLeft", "moveRight", "interaction", "record", "replay",
+            "climbUp", "climbDown"
+        ];
+        // 允许的按键集合，补充 KeyW/KeyS 以防没有 climbUp/climbDown 意图
+        this.allowedKeys = new Set(
+            relevantIntents
+                .map(intent => keyBindingManager.getKeyByIntent(intent))
+                .filter(Boolean)
+        );
+        // 兼容没有 climbUp/climbDown 意图时，直接允许 KeyW/KeyS
+        this.allowedKeys.add("KeyW");
+        this.allowedKeys.add("KeyS");
         this.pressedKeys = new Set();
 
         this._keydownHandler = (event) => this.eventHandler(event);

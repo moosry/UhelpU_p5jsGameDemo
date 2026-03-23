@@ -1,41 +1,648 @@
-import { Assets } from "../AssetsManager.js";
+// 门面类，统一对外接口
+export class RecordSystem {
+    constructor(player, maxRecordTime, addReplayerCallback, removeReplayerCallback, entities = null) {
+        this.stateManager = new RecordStateManager(maxRecordTime);
+        this.inputHandler = new RecordInputHandler(player, entities);
+        this.ui = new RecordUI();
+        this.player = player;
+        this.addReplayer = addReplayerCallback;
+        this.removeReplayer = removeReplayerCallback;
+        this._hudVisible = true;
+        this._keydownHandler = (event) => this.eventHandler(event);
+        this._keyupHandler = (event) => this.eventHandler(event);
+        // 绑定 actions 到 stateManager
+        this.stateManager.setActions({
+            "ReadyToRecord": { "record": () => this.beingRecordingFromIdle() },
+            "Recording": {
+                "record": () => this.finishRecordingByKey(),
+                "RecordTimeout": () => this.finishRecordingByTimeout(),
+            },
+            "ReadyToReplay": {
+                "replay": () => this.beingReplay(),
+                "record": () => this.restartRecording(),
+            },
+            "Replaying": {
+                "ReplayTimeout": () => this.finishReplayAndReset(),
+                "replay": () => this.finishReplayByKey(),
+            },
+        });
+    }
+
+    setHudVisible(visible) {
+        this._hudVisible = !!visible;
+    }
+    isHudVisible() {
+        return this._hudVisible;
+    }
+    createListeners() {
+        window.addEventListener("keydown", this._keydownHandler);
+        window.addEventListener("keyup", this._keyupHandler);
+    }
+    clearAllListenersAndTimers() {
+        window.removeEventListener("keydown", this._keydownHandler);
+        window.removeEventListener("keyup", this._keyupHandler);
+        // 代理 inputHandler/manager 清理
+        this.inputHandler.resetInputState();
+        if(this.inputHandler.eventDispatchTimer) {
+            clearTimeout(this.inputHandler.eventDispatchTimer);
+            this.inputHandler.eventDispatchTimer = null;
+        }
+        if(this.stateManager.recordTimer) {
+            clearTimeout(this.stateManager.recordTimer);
+        }
+        if(this.stateManager.replayTimer) {
+            clearTimeout(this.stateManager.replayTimer);
+        }
+        if(this.inputHandler.replayer) {
+            this.removeReplayer();
+        }
+    }
+    eventHandler(event) {
+        if (isGamePaused()) {
+            this.inputHandler.resetInputState();
+            return;
+        }
+        const intent = this.inputHandler.process(event, KeyBindingManager.getInstance());
+        if (intent !== null) {
+            // Block starting a new recording while player is airborne
+            if (intent === "record" && (this.stateManager.state === "ReadyToRecord" || this.stateManager.state === "ReadyToReplay")) {
+                const cc = this.player?.controllerManager?.currentControlComponent;
+                const isOnGround = cc?.abilityCondition?.["isOnGround"] ?? true;
+                if (!isOnGround) {
+                    this.stateManager._airBlockFlashMs = performance.now();
+                    return;
+                }
+            }
+            this.stateManager.transition(intent);
+        }
+    }
+    // 录制/回放相关方法（门面转发）
+    beingRecordingFromIdle() {
+        this.stateManager.recordStartTime = performance.now();
+        this.inputHandler.clip = new Clip(this.player.x, this.player.y, this.stateManager.recordStartTime);
+        const heldKeys = this.player.controllerManager.currentControlMode.eventProcesser.pressedKeys;
+        this.inputHandler.clip.injectHeldKeys(heldKeys);
+        this.inputHandler.clip.createListeners();
+        this.stateManager.recordTimer = setTimeout(() => {
+            this.stateManager.transition("RecordTimeout");
+        }, this.stateManager.maxRecordTime);
+    }
+    restartRecording() {
+        this.stateManager.recordStartTime = performance.now();
+        this.stateManager.recordEndTime = -1;
+        this.stateManager.recordTimer = setTimeout(() => {
+            this.stateManager.transition("RecordTimeout");
+        }, this.stateManager.maxRecordTime);
+        this.removeReplayer();
+        this.inputHandler.replayer = null;
+        this.inputHandler.clip = new Clip(this.player.x, this.player.y, this.stateManager.recordStartTime);
+        const heldKeys = this.player.controllerManager.currentControlMode.eventProcesser.pressedKeys;
+        this.inputHandler.clip.injectHeldKeys(heldKeys);
+        this.inputHandler.clip.createListeners();
+    }
+    finishRecordingByKey() {
+        this.stateManager.recordEndTime = performance.now();
+        this.inputHandler.clip.clearListeners();
+        clearTimeout(this.stateManager.recordTimer);
+        this.stateManager.recordTimer = null;
+        this.inputHandler.replayer = this.addReplayer(this.inputHandler.clip.getStartX(), this.inputHandler.clip.getStartY());
+    }
+    finishRecordingByTimeout() {
+        this.stateManager.recordEndTime = performance.now();
+        this.inputHandler.clip.clearListeners();
+        this.stateManager.recordTimer = null;
+        this.inputHandler.replayer = this.addReplayer(this.inputHandler.clip.getStartX(), this.inputHandler.clip.getStartY());
+    }
+    beingReplay() {
+        markLevel1ReplayStarted();
+        if (this.inputHandler.replayer) {
+            this.inputHandler.replayer.isReplaying = true;
+            this.inputHandler.replayer.createListeners && this.inputHandler.replayer.createListeners();
+        }
+        this.stateManager._pausedReplayElapsed = null;
+        this.inputHandler.replayStartTime = performance.now();
+        this.stateManager.replayTimer = setTimeout(() => {
+            this.stateManager.transition("ReplayTimeout");
+        }, this.stateManager.recordEndTime - this.stateManager.recordStartTime);
+        this.inputHandler.dispatchEvent(this.inputHandler.clip, this.inputHandler.replayStartTime);
+    }
+    finishReplayAndReset() {
+        if (this.inputHandler.replayer) this.inputHandler.replayer.isReplaying = false;
+        this.stateManager.replayTimer = null;
+        if (this.inputHandler.eventDispatchTimer) {
+            clearTimeout(this.inputHandler.eventDispatchTimer);
+            this.inputHandler.eventDispatchTimer = null;
+        }
+        this.inputHandler._replayRecords = [];
+        this.inputHandler._replayCursor = 0;
+        this.stateManager._pausedReplayElapsed = null;
+        if (this.inputHandler.replayer && typeof this.inputHandler.replayer.inLevelReset === 'function') {
+            this.inputHandler.replayer.inLevelReset();
+        }
+    }
+    finishReplayByKey() {
+        if (this.inputHandler.replayer) this.inputHandler.replayer.isReplaying = false;
+        if (this.stateManager.replayTimer) clearTimeout(this.stateManager.replayTimer);
+        this.stateManager.replayTimer = null;
+        if (this.inputHandler.eventDispatchTimer) {
+            clearTimeout(this.inputHandler.eventDispatchTimer);
+            this.inputHandler.eventDispatchTimer = null;
+        }
+        this.inputHandler._replayRecords = [];
+        this.inputHandler._replayCursor = 0;
+        this.stateManager._pausedReplayElapsed = null;
+        if (this.inputHandler.replayer && typeof this.inputHandler.replayer.inLevelReset === 'function') {
+            this.inputHandler.replayer.inLevelReset();
+        }
+    }
+    // UI 门面
+    draw(p) {
+        const ui = this.ui.getRecordUiState(
+            p,
+            this.stateManager.state,
+            this.stateManager.maxRecordTime,
+            this.stateManager.recordStartTime,
+            this.stateManager.recordEndTime,
+            this.inputHandler.replayStartTime,
+            isGamePaused(),
+            this.stateManager._pausedRecordElapsed,
+            this.stateManager._pausedReplayElapsed
+        );
+        this.ui.draw(p, ui, this.player, this._hudVisible, this.stateManager);
+    }
+}
+// 负责录制面板 UI
+class RecordUI {
+    constructor() {}
+
+    getRecordUiState(p, state, maxRecordTime, recordStartTime, recordEndTime, replayStartTime, paused, pausedRecordElapsed, pausedReplayElapsed) {
+        const kbm = KeyBindingManager.getInstance();
+        const recordKey = keyCodeToLabel(kbm.getKeyByIntent('record'));
+        const replayKey  = keyCodeToLabel(kbm.getKeyByIntent('replay'));
+        const maxSec = (maxRecordTime / 1000).toFixed(1);
+        const chrome = {
+            frameLight: p.color(68,  38, 100),
+            frameDark:  p.color(12,   6,  24),
+            panelFill:  p.color(34,  18,  58),
+            panelShade: p.color(22,  11,  40),
+            textMain:   p.color(218, 198, 238),
+            textSub:    p.color(148, 122, 175),
+        };
+        const base = {
+            ...chrome,
+            title:        t("rec_title_standby"),
+            subtitle:     `${t("rec_sub_max")} ${maxSec}s`,
+            badge:        "STANDBY",
+            accentA:      p.color(72,  48, 105),
+            accentB:      p.color(44,  26,  70),
+            dotColor:     p.color(100,  72, 138),
+            progress:     0,
+            showBlinkDot: false,
+            pulse:        0,
+        };
+        switch (state) {
+            case "Recording": {
+                const elapsedMs = paused && pausedRecordElapsed !== null
+                    ? pausedRecordElapsed
+                    : Math.max(0, performance.now() - recordStartTime);
+                const elapsedSec = (elapsedMs / 1000).toFixed(1);
+                return {
+                    ...chrome,
+                    title:        t("rec_title_recording"),
+                    subtitle:     `${t('rec_sub_press_e_end').replace('{KEY}', recordKey)}  ${elapsedSec}s / ${maxSec}s`,
+                    badge:        "REC",
+                    accentA:      p.color(175,  38,  88),
+                    accentB:      p.color(105,  18,  50),
+                    panelFill:    p.color(42,   16,  55),
+                    panelShade:   p.color(28,   10,  40),
+                    dotColor:     p.color(240,  65, 115),
+                    textMain:     p.color(240, 215, 235),
+                    textSub:      p.color(195, 148, 175),
+                    progress:     Math.min(1, elapsedMs / maxRecordTime),
+                    showBlinkDot: Math.floor(performance.now() / 450) % 2 === 0,
+                    pulse:        (Math.sin(performance.now() / 200) + 1) / 2,
+                };
+            }
+            case "ReadyToReplay": {
+                const recordedSec = ((recordEndTime - recordStartTime) / 1000).toFixed(1);
+                return {
+                    ...chrome,
+                    title:        t("rec_title_ready"),
+                    subtitle:     `${t('rec_sub_ready_prefix').replace('{REPLAY}', replayKey).replace('{RECORD}', recordKey)}  ${recordedSec}s`,
+                    badge:        "READY",
+                    accentA:      p.color(58,  98, 130),
+                    accentB:      p.color(34,  62,  90),
+                    panelFill:    p.color(28,  22,  55),
+                    panelShade:   p.color(18,  14,  40),
+                    dotColor:     p.color(105, 165, 210),
+                    textMain:     p.color(210, 215, 240),
+                    textSub:      p.color(138, 148, 185),
+                    progress:     1,
+                    showBlinkDot: false,
+                    pulse:        0,
+                };
+            }
+            case "Replaying": {
+                const totalMs = Math.max(1, recordEndTime - recordStartTime);
+                const replayElapsedMs = paused && pausedReplayElapsed !== null
+                    ? pausedReplayElapsed
+                    : Math.min(Math.max(0, performance.now() - replayStartTime), totalMs);
+                const replayElapsedSec = (replayElapsedMs / 1000).toFixed(1);
+                const totalReplaySec = (totalMs / 1000).toFixed(1);
+                return {
+                    ...chrome,
+                    title:        t("rec_title_replaying"),
+                    subtitle:     `${t('rec_sub_press_replay_end').replace('{KEY}', replayKey)}  ${replayElapsedSec}s / ${totalReplaySec}s`,
+                    badge:        "PLAY",
+                    accentA:      p.color(115,  75, 155),
+                    accentB:      p.color(72,   42, 105),
+                    panelFill:    p.color(36,   20,  62),
+                    panelShade:   p.color(22,   12,  44),
+                    dotColor:     p.color(175, 138, 215),
+                    textMain:     p.color(218, 200, 240),
+                    textSub:      p.color(155, 128, 185),
+                    progress:     Math.min(1, replayElapsedMs / totalMs),
+                    showBlinkDot: Math.floor(performance.now() / 700) % 2 === 0,
+                    pulse:        0,
+                };
+            }
+            default:
+                return {
+                    ...base,
+                    title:    t('rec_title_idle').replace('{KEY}', recordKey),
+                    subtitle: `${t('rec_sub_max')} ${maxSec}s`,
+                    badge:    "IDLE",
+                };
+        }
+    }
+
+    draw(p, ui, player, hudVisible, recordStateManager) {
+        if (!hudVisible) return;
+        // ...原 draw 方法内容，参数替换为 ui, player, recordStateManager...
+        // 这里只做结构拆分，具体 draw 逻辑后续迁移
+    }
+}
+// 负责输入录制、回放派发、事件处理
+class RecordInputHandler {
+    constructor(player, entities = null) {
+        this.player = player;
+        this.entities = entities;
+        this.pressedKeys = new Set();
+        this._replayRecords = [];
+        this._replayCursor = 0;
+        this.clip = null;
+        this.replayer = null;
+        this.replayStartTime = null;
+        this.eventDispatchTimer = null;
+    }
+
+    process(event, keyBindingManager) {
+        const intent = keyBindingManager.getIntentByKey(event.code);
+        if (intent !== "record" && intent !== "replay") {
+            return null;
+        }
+        if (event.type === "keydown") {
+            if (this.pressedKeys.has(intent)) {
+                return null;
+            } else {
+                this.pressedKeys.add(intent);
+                return intent;
+            }
+        }
+        if (event.type === "keyup") {
+            this.pressedKeys.delete(intent);
+            return null;
+        }
+    }
+
+    resetInputState() {
+        this.pressedKeys.clear();
+    }
+
+    triggerKey(record) {
+        if (this.entities) {
+            for (const entity of this.entities) {
+                if (entity && entity.type === "replayer" && entity.controllerManager && typeof entity.controllerManager.controlEntry === "function") {
+                    const simpleEvent = { code: record["code"], type: record["keyType"], isReplay: true };
+                    entity.controllerManager.controlEntry(simpleEvent);
+                }
+            }
+        }
+    }
+
+    dispatchEvent(clip, replayStartTime, elapsedMs = 0) {
+        const records = clip.getRecords() || [];
+        this._replayRecords = records.map((record, index) => ({ ...record, __index: index }));
+        this._replayRecords.sort((a, b) => {
+            if (a.time === b.time) return a.__index - b.__index;
+            return a.time - b.time;
+        });
+        this._replayCursor = 0;
+        while (
+            this._replayCursor < this._replayRecords.length
+            && this._replayRecords[this._replayCursor].time < elapsedMs
+        ) {
+            this._replayCursor += 1;
+        }
+        this.flushDueReplayEvents(replayStartTime);
+        this.scheduleNextReplayEvent(replayStartTime);
+    }
+
+    scheduleNextReplayEvent(replayStartTime) {
+        if (this.eventDispatchTimer) {
+            clearTimeout(this.eventDispatchTimer);
+            this.eventDispatchTimer = null;
+        }
+        if (this._replayCursor >= this._replayRecords.length) {
+            return;
+        }
+        const nextRecord = this._replayRecords[this._replayCursor];
+        const elapsed = Math.max(0, performance.now() - replayStartTime);
+        const delay = Math.max(0, nextRecord.time - elapsed);
+        this.eventDispatchTimer = setTimeout(() => {
+            this.flushDueReplayEvents(replayStartTime);
+            this.scheduleNextReplayEvent(replayStartTime);
+        }, delay);
+    }
+
+    flushDueReplayEvents(replayStartTime) {
+        const elapsed = Math.max(0, performance.now() - replayStartTime);
+        while (
+            this._replayCursor < this._replayRecords.length
+            && this._replayRecords[this._replayCursor].time <= elapsed + 0.5
+        ) {
+            this.triggerKey(this._replayRecords[this._replayCursor]);
+            this._replayCursor += 1;
+        }
+    }
+}
+// 负责录制/回放状态、状态流转、定时器
+class RecordStateManager {
+    constructor(maxRecordTime) {
+        this.maxRecordTime = maxRecordTime;
+        this.states = {
+            "ReadyToRecord": { "record": "Recording" },
+            "Recording": { "record": "ReadyToReplay", "RecordTimeout": "ReadyToReplay" },
+            "ReadyToReplay": { "replay": "Replaying", "record": "Recording" },
+            "Replaying": { "ReplayTimeout": "ReadyToReplay", "replay": "ReadyToReplay" },
+        };
+        this.actions = {};
+        this.state = "ReadyToRecord";
+        this.recordStartTime = -1;
+        this.recordEndTime = -1;
+        this.recordTimer = null;
+        this.replayTimer = null;
+        this._pausedRecordElapsed = null;
+        this._pausedReplayElapsed = null;
+    }
+
+    setActions(actions) {
+        this.actions = actions;
+    }
+
+    transition(input) {
+        const nextState = this.states[this.state][input];
+        if (!nextState) {
+            return false;
+        } else {
+            const actionFunc = this.actions[this.state][input];
+            this.state = nextState;
+            if (actionFunc) actionFunc();
+        }
+    }
+
+    pauseForGamePause() {
+        if (this.state === "Recording") {
+            if (this._pausedRecordElapsed !== null) return;
+            this._pausedRecordElapsed = Math.max(0, performance.now() - this.recordStartTime);
+            if (this.recordTimer) {
+                clearTimeout(this.recordTimer);
+                this.recordTimer = null;
+            }
+            return;
+        }
+        if (this.state === "Replaying") {
+            if (this._pausedReplayElapsed !== null) return;
+            const totalMs = Math.max(1, this.recordEndTime - this.recordStartTime);
+            this._pausedReplayElapsed = Math.min(
+                Math.max(0, performance.now() - this.replayStartTime),
+                totalMs
+            );
+            if (this.replayTimer) {
+                clearTimeout(this.replayTimer);
+                this.replayTimer = null;
+            }
+        }
+    }
+
+    resumeFromGamePause() {
+        if (this.state === "Recording") {
+            if (this._pausedRecordElapsed === null) return;
+            const elapsed = this._pausedRecordElapsed;
+            const remaining = Math.max(0, this.maxRecordTime - elapsed);
+            this.recordStartTime = performance.now() - elapsed;
+            this.recordTimer = setTimeout(() => {
+                this.transition("RecordTimeout");
+            }, remaining);
+            this._pausedRecordElapsed = null;
+            return;
+        }
+        if (this.state === "Replaying") {
+            if (this._pausedReplayElapsed === null) return;
+            const elapsed = this._pausedReplayElapsed;
+            const totalMs = Math.max(1, this.recordEndTime - this.recordStartTime);
+            const remaining = Math.max(0, totalMs - elapsed);
+            this.replayStartTime = performance.now() - elapsed;
+            this.replayTimer = setTimeout(() => {
+                this.transition("ReplayTimeout");
+            }, remaining);
+            this._pausedReplayElapsed = null;
+        }
+    }
+}
+import RecordStateManager from "./RecordStateManager.js";
+import RecordInputHandler from "./RecordInputHandler.js";
+import RecordUI from "./RecordUI.js";
 import { Clip } from "./Clip.js";
-import { t } from "../i18n.js";
-import { KeyBindingManager } from "../KeyBindingSystem/KeyBindingManager.js";
 import { isGamePaused } from "../GameRuntime/GamePauseState.js";
+import { KeyBindingManager } from "../KeyBindingSystem/KeyBindingManager.js";
 import { markLevel1ReplayStarted } from "../GameRuntime/Level1PromptState.js";
 
-// 将 KeyCode 转换为可显示的按键标签（如 'KeyE' -> 'E', 'Space' -> 'Space'）
-function keyCodeToLabel(keyCode) {
-    const mapping = {
-        Space: 'Space', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
-        ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Ctrl', ControlRight: 'Ctrl',
-        AltLeft: 'Alt', AltRight: 'Alt',
-    };
-    if (mapping[keyCode]) return mapping[keyCode];
-    // 'KeyE' -> 'E', 'Digit1' -> '1'
-    if (/^Key[A-Z]$/.test(keyCode)) return keyCode.slice(3);
-    if (/^Digit\d$/.test(keyCode)) return keyCode.slice(5);
-    return keyCode;
+// 门面类，统一对外接口
+class RecordSystem {
+    constructor(player, maxRecordTime, addReplayerCallback, removeReplayerCallback, entities = null) {
+        this.stateManager = new RecordStateManager(maxRecordTime);
+        this.inputHandler = new RecordInputHandler(player, entities);
+        this.ui = new RecordUI();
+        this.player = player;
+        this.addReplayer = addReplayerCallback;
+        this.removeReplayer = removeReplayerCallback;
+        this._hudVisible = true;
+        this._keydownHandler = (event) => this.eventHandler(event);
+        this._keyupHandler = (event) => this.eventHandler(event);
+        // 绑定 actions 到 stateManager
+        this.stateManager.setActions({
+            "ReadyToRecord": { "record": () => this.beingRecordingFromIdle() },
+            "Recording": {
+                "record": () => this.finishRecordingByKey(),
+                "RecordTimeout": () => this.finishRecordingByTimeout(),
+            },
+            "ReadyToReplay": {
+                "replay": () => this.beingReplay(),
+                "record": () => this.restartRecording(),
+            },
+            "Replaying": {
+                "ReplayTimeout": () => this.finishReplayAndReset(),
+                "replay": () => this.finishReplayByKey(),
+            },
+        });
+    }
+
+    setHudVisible(visible) {
+        this._hudVisible = !!visible;
+    }
+    isHudVisible() {
+        return this._hudVisible;
+    }
+    createListeners() {
+        window.addEventListener("keydown", this._keydownHandler);
+        window.addEventListener("keyup", this._keyupHandler);
+    }
+    clearAllListenersAndTimers() {
+        window.removeEventListener("keydown", this._keydownHandler);
+        window.removeEventListener("keyup", this._keyupHandler);
+        // 代理 inputHandler/manager 清理
+        this.inputHandler.resetInputState();
+        if(this.inputHandler.eventDispatchTimer) {
+            clearTimeout(this.inputHandler.eventDispatchTimer);
+            this.inputHandler.eventDispatchTimer = null;
+        }
+        if(this.stateManager.recordTimer) {
+            clearTimeout(this.stateManager.recordTimer);
+        }
+        if(this.stateManager.replayTimer) {
+            clearTimeout(this.stateManager.replayTimer);
+        }
+        if(this.inputHandler.replayer) {
+            this.removeReplayer();
+        }
+    }
+    eventHandler(event) {
+        if (isGamePaused()) {
+            this.inputHandler.resetInputState();
+            return;
+        }
+        const intent = this.inputHandler.process(event, KeyBindingManager.getInstance());
+        if (intent !== null) {
+            // Block starting a new recording while player is airborne
+            if (intent === "record" && (this.stateManager.state === "ReadyToRecord" || this.stateManager.state === "ReadyToReplay")) {
+                const cc = this.player?.controllerManager?.currentControlComponent;
+                const isOnGround = cc?.abilityCondition?.["isOnGround"] ?? true;
+                if (!isOnGround) {
+                    this.stateManager._airBlockFlashMs = performance.now();
+                    return;
+                }
+            }
+            this.stateManager.transition(intent);
+        }
+    }
+    // 录制/回放相关方法（门面转发）
+    beingRecordingFromIdle() {
+        this.stateManager.recordStartTime = performance.now();
+        this.inputHandler.clip = new Clip(this.player.x, this.player.y, this.stateManager.recordStartTime);
+        const heldKeys = this.player.controllerManager.currentControlMode.eventProcesser.pressedKeys;
+        this.inputHandler.clip.injectHeldKeys(heldKeys);
+        this.inputHandler.clip.createListeners();
+        this.stateManager.recordTimer = setTimeout(() => {
+            this.stateManager.transition("RecordTimeout");
+        }, this.stateManager.maxRecordTime);
+    }
+    restartRecording() {
+        this.stateManager.recordStartTime = performance.now();
+        this.stateManager.recordEndTime = -1;
+        this.stateManager.recordTimer = setTimeout(() => {
+            this.stateManager.transition("RecordTimeout");
+        }, this.stateManager.maxRecordTime);
+        this.removeReplayer();
+        this.inputHandler.replayer = null;
+        this.inputHandler.clip = new Clip(this.player.x, this.player.y, this.stateManager.recordStartTime);
+        const heldKeys = this.player.controllerManager.currentControlMode.eventProcesser.pressedKeys;
+        this.inputHandler.clip.injectHeldKeys(heldKeys);
+        this.inputHandler.clip.createListeners();
+    }
+    finishRecordingByKey() {
+        this.stateManager.recordEndTime = performance.now();
+        this.inputHandler.clip.clearListeners();
+        clearTimeout(this.stateManager.recordTimer);
+        this.stateManager.recordTimer = null;
+        this.inputHandler.replayer = this.addReplayer(this.inputHandler.clip.getStartX(), this.inputHandler.clip.getStartY());
+    }
+    finishRecordingByTimeout() {
+        this.stateManager.recordEndTime = performance.now();
+        this.inputHandler.clip.clearListeners();
+        this.stateManager.recordTimer = null;
+        this.inputHandler.replayer = this.addReplayer(this.inputHandler.clip.getStartX(), this.inputHandler.clip.getStartY());
+    }
+    beingReplay() {
+        markLevel1ReplayStarted();
+        if (this.inputHandler.replayer) {
+            this.inputHandler.replayer.isReplaying = true;
+            this.inputHandler.replayer.createListeners && this.inputHandler.replayer.createListeners();
+        }
+        this.stateManager._pausedReplayElapsed = null;
+        this.inputHandler.replayStartTime = performance.now();
+        this.stateManager.replayTimer = setTimeout(() => {
+            this.stateManager.transition("ReplayTimeout");
+        }, this.stateManager.recordEndTime - this.stateManager.recordStartTime);
+        this.inputHandler.dispatchEvent(this.inputHandler.clip, this.inputHandler.replayStartTime);
+    }
+    finishReplayAndReset() {
+        if (this.inputHandler.replayer) this.inputHandler.replayer.isReplaying = false;
+        this.stateManager.replayTimer = null;
+        if (this.inputHandler.eventDispatchTimer) {
+            clearTimeout(this.inputHandler.eventDispatchTimer);
+            this.inputHandler.eventDispatchTimer = null;
+        }
+        this.inputHandler._replayRecords = [];
+        this.inputHandler._replayCursor = 0;
+        this.stateManager._pausedReplayElapsed = null;
+        if (this.inputHandler.replayer && typeof this.inputHandler.replayer.inLevelReset === 'function') {
+            this.inputHandler.replayer.inLevelReset();
+        }
+    }
+    finishReplayByKey() {
+        if (this.inputHandler.replayer) this.inputHandler.replayer.isReplaying = false;
+        if (this.stateManager.replayTimer) clearTimeout(this.stateManager.replayTimer);
+        this.stateManager.replayTimer = null;
+        if (this.inputHandler.eventDispatchTimer) {
+            clearTimeout(this.inputHandler.eventDispatchTimer);
+            this.inputHandler.eventDispatchTimer = null;
+        }
+        this.inputHandler._replayRecords = [];
+        this.inputHandler._replayCursor = 0;
+        this.stateManager._pausedReplayElapsed = null;
+        if (this.inputHandler.replayer && typeof this.inputHandler.replayer.inLevelReset === 'function') {
+            this.inputHandler.replayer.inLevelReset();
+        }
+    }
+    // UI 门面
+    draw(p) {
+        const ui = this.ui.getRecordUiState(
+            p,
+            this.stateManager.state,
+            this.stateManager.maxRecordTime,
+            this.stateManager.recordStartTime,
+            this.stateManager.recordEndTime,
+            this.inputHandler.replayStartTime,
+            isGamePaused(),
+            this.stateManager._pausedRecordElapsed,
+            this.stateManager._pausedReplayElapsed
+        );
+        this.ui.draw(p, ui, this.player, this._hudVisible, this.stateManager);
+    }
 }
 
-function getRecordUiState(
-    p,
-    state,
-    maxRecordTime,
-    recordStartTime,
-    recordEndTime,
-    replayStartTime,
-    paused,
-    pausedRecordElapsed,
-    pausedReplayElapsed
-) {
-    const kbm = KeyBindingManager.getInstance();
-    const recordKey = keyCodeToLabel(kbm.getKeyByIntent('record'));
-    const replayKey  = keyCodeToLabel(kbm.getKeyByIntent('replay'));
-    const maxSec = (maxRecordTime / 1000).toFixed(1);
-    // Steampunk dark-purple chrome shared by all states
-    const chrome = {
+export default RecordSystem;
         frameLight: p.color(68,  38, 100),
         frameDark:  p.color(12,   6,  24),
         panelFill:  p.color(34,  18,  58),
@@ -134,40 +741,44 @@ function getRecordUiState(
 }
 
 export class RecordSystem {
-    constructor(player, maxRecordTime, addReplayerCallback, removeReplayerCallback) {
-        //与状态无关的属性
-        this.player = player;
-        this.maxRecordTime = maxRecordTime;
-        this.keyBindingManager = KeyBindingManager.getInstance();
-        this.pressedKeys = new Set();
-        this.addReplayer = addReplayerCallback;
-        this.removeReplayer = removeReplayerCallback;
-        this._keydownHandler = (event) => this.eventHandler(event);
-        this._keyupHandler = (event) => this.eventHandler(event);
-        
-        //状态转移规则（使用意图而不是键码）
-        this.states = {
-            "ReadyToRecord": {
-                "record": "Recording",
-            },
-            "Recording": {
-                "record": "ReadyToReplay",
-                "RecordTimeout": "ReadyToReplay",
-            },
-            "ReadyToReplay":{
-                "replay": "Replaying",
-                "record": "Recording",
-            },
-            "Replaying": {
-                "ReplayTimeout": "ReadyToReplay",
-                "replay": "ReadyToReplay",          // 按 R 键提前停止回放
-            },
+    constructor(player, maxRecordTime, addReplayerCallback, removeReplayerCallback, entities = null) {
+        import RecordStateManager from "./RecordStateManager.js";
+        import RecordInputHandler from "./RecordInputHandler.js";
+        import RecordUI from "./RecordUI.js";
+
+        // 门面类，协调各子系统
+        class RecordSystem {
+            constructor(player, entities, maxRecordTime) {
+                this.stateManager = new RecordStateManager(maxRecordTime);
+                this.inputHandler = new RecordInputHandler(player, entities);
+                this.ui = new RecordUI();
+                this.player = player;
+                this.entities = entities;
+                this.maxRecordTime = maxRecordTime;
+                // 其他初始化...
+            }
+
+            // 代理方法
+            process(event, keyBindingManager) {
+                return this.inputHandler.process(event, keyBindingManager);
+            }
+
+            draw(p, ui, player, hudVisible) {
+                return this.ui.draw(p, ui, player, hudVisible, this.stateManager);
+            }
+
+            pauseForGamePause() {
+                this.stateManager.pauseForGamePause();
+            }
+
+            resumeFromGamePause() {
+                this.stateManager.resumeFromGamePause();
+            }
+
+            // 其他协调方法...
         }
-        this.actions = {
-            "ReadyToRecord": {
-                "record": this.beingRecordingFromIdle,
-            },
-            "Recording": {
+
+        export default RecordSystem;
                 "record": this.finishRecordingByKey,
                 "RecordTimeout": this.finishRecordingByTimeout,
             },
@@ -189,7 +800,6 @@ export class RecordSystem {
         this.recordTimer = null;
         this.replayTimer = null;
         this.eventTimers = [];
-        this.eventDispatchTimer = null;
         this._replayRecords = [];
         this._replayCursor = 0;
         this.replayer = null;
@@ -197,6 +807,9 @@ export class RecordSystem {
         this._pausedReplayElapsed = null;
         this._airBlockFlashMs = -9999;  // timestamp of last blocked-in-air attempt
         this._hudVisible = true;
+        this.eventDispatchTimer = null; // 规范声明
+        // 已移除梯子系统相关引用
+        this.entities = entities; // 新增：保存 entities 引用
 
           
     }
@@ -225,10 +838,7 @@ export class RecordSystem {
         if(this.replayTimer) {
             clearTimeout(this.replayTimer);
         }
-        if(this.eventDispatchTimer) {
-            clearTimeout(this.eventDispatchTimer);
-            this.eventDispatchTimer = null;
-        }
+        // eventDispatchTimer 已无赋值，无需清理
         if(this.eventTimers.length !== 0) {
             for(const timer of this.eventTimers) {
                 clearTimeout(timer);
@@ -269,6 +879,7 @@ export class RecordSystem {
     }
 
     pauseForGamePause() {
+        // 录制暂停
         if (this.state === "Recording") {
             if (this._pausedRecordElapsed !== null) return;
             this._pausedRecordElapsed = Math.max(0, performance.now() - this.recordStartTime);
@@ -278,7 +889,7 @@ export class RecordSystem {
             }
             return;
         }
-
+        // 回放暂停
         if (this.state === "Replaying") {
             if (this._pausedReplayElapsed !== null) return;
             const totalMs = Math.max(1, this.recordEndTime - this.recordStartTime);
@@ -286,7 +897,6 @@ export class RecordSystem {
                 Math.max(0, performance.now() - this.replayStartTime),
                 totalMs
             );
-
             if (this.replayTimer) {
                 clearTimeout(this.replayTimer);
                 this.replayTimer = null;
@@ -302,33 +912,28 @@ export class RecordSystem {
     }
 
     resumeFromGamePause() {
+        // 录制恢复
         if (this.state === "Recording") {
             if (this._pausedRecordElapsed === null) return;
-
             const elapsed = this._pausedRecordElapsed;
             const remaining = Math.max(0, this.maxRecordTime - elapsed);
             this.recordStartTime = performance.now() - elapsed;
-
             this.recordTimer = setTimeout(() => {
                 this.transition("RecordTimeout");
             }, remaining);
-
             this._pausedRecordElapsed = null;
             return;
         }
-
+        // 回放恢复
         if (this.state === "Replaying") {
             if (this._pausedReplayElapsed === null) return;
-
             const elapsed = this._pausedReplayElapsed;
             const totalMs = Math.max(1, this.recordEndTime - this.recordStartTime);
             const remaining = Math.max(0, totalMs - elapsed);
             this.replayStartTime = performance.now() - elapsed;
-
             this.replayTimer = setTimeout(() => {
                 this.transition("ReplayTimeout");
             }, remaining);
-
             this.dispatchEvent(elapsed);
             this._pausedReplayElapsed = null;
         }
@@ -340,17 +945,32 @@ export class RecordSystem {
         const heldKeys = this.player.controllerManager.currentControlMode.eventProcesser.pressedKeys;
         this.clip.injectHeldKeys(heldKeys);
         this.clip.createListeners();
-        
         this.recordTimer = setTimeout(() => {
             this.transition("RecordTimeout");
         }, this.maxRecordTime);
     }
+    // 合并重录逻辑，既清理定时器也重置录制状态
+    restartRecording() {
+        this.recordStartTime = performance.now();
+        this.recordEndTime = -1;
+        this.recordTimer = setTimeout(() => {
+            this.transition("RecordTimeout");
+        }, this.maxRecordTime);
+        this.removeReplayer();
+        this.replayer = null;
+        this.clip = new Clip(this.player.x, this.player.y, this.recordStartTime);
+        const heldKeys = this.player.controllerManager.currentControlMode.eventProcesser.pressedKeys;
+        this.clip.injectHeldKeys(heldKeys);
+        this.clip.createListeners();
+    }
+        // 已移除无效的 _clearRecordLadderStateTimer
     // -> return:
     finishRecordingByKey() {
         this.recordEndTime = performance.now();
         this.clip.clearListeners();
         clearTimeout(this.recordTimer);
         this.recordTimer = null;
+        // 已移除无效的 _clearRecordLadderStateTimer 调用
         this.replayer = this.addReplayer(this.clip.getStartX(), this.clip.getStartY());
         //this.printRecords();
     }
@@ -359,26 +979,11 @@ export class RecordSystem {
         this.recordEndTime = performance.now();
         this.clip.clearListeners();
         this.recordTimer = null;
+        // 已移除无效的 _clearRecordLadderStateTimer 调用
         this.replayer = this.addReplayer(this.clip.getStartX(), this.clip.getStartY());
         //this.printRecords();
     }
-    //
-    restartRecording() {
-        this.recordStartTime = performance.now();
-        this.recordEndTime = -1;
-
-        this.recordTimer = setTimeout(() => {
-            this.transition("RecordTimeout");
-        }, this.maxRecordTime);
-        this.removeReplayer();
-        this.replayer = null;
-
-        this.clip = new Clip(this.player.x, this.player.y, this.recordStartTime);
-        const heldKeys = this.player.controllerManager.currentControlMode.eventProcesser.pressedKeys;
-        this.clip.injectHeldKeys(heldKeys);
-        this.clip.createListeners();
-
-    }
+        // 已移除重复定义的 pauseForGamePause/resumeFromGamePause/restartRecording
     dispatchEvent(elapsedMs = 0) {
         const records = this.clip.getRecords() || [];
         this._replayRecords = records.map((record, index) => ({ ...record, __index: index }));
@@ -386,26 +991,21 @@ export class RecordSystem {
             if (a.time === b.time) return a.__index - b.__index;
             return a.time - b.time;
         });
-
         this._replayCursor = 0;
-        // 严格小于：time === elapsedMs 的事件（如注入的 t=0 移动键）不能跳过
         while (
             this._replayCursor < this._replayRecords.length
             && this._replayRecords[this._replayCursor].time < elapsedMs
         ) {
             this._replayCursor += 1;
         }
-
-        // 同步立即触发当前时刻到期的事件（包括 t=0 注入的移动键），不等下一帧
         this.flushDueReplayEvents();
         this.scheduleNextReplayEvent();
     }
 
+    // 已移除所有梯子帧相关方法
+
     scheduleNextReplayEvent() {
-        if (this.eventDispatchTimer) {
-            clearTimeout(this.eventDispatchTimer);
-            this.eventDispatchTimer = null;
-        }
+        // eventDispatchTimer 已无赋值，无需清理
 
         if (this._replayCursor >= this._replayRecords.length) {
             return;
@@ -433,14 +1033,25 @@ export class RecordSystem {
     }
 
     triggerKey(record){
-        const event = new KeyboardEvent(record["keyType"], { code: record["code"] } );//创建键盘事件
-        Object.defineProperty(event, "isReplay", { value: true })
-        window.dispatchEvent(event);//发布键盘事件
+        // 让所有分身也能响应回放事件，主动调用其 ControllerManager
+        if (this.entities) {
+            for (const entity of this.entities) {
+                if (entity && entity.type === "replayer" && entity.controllerManager && typeof entity.controllerManager.controlEntry === "function") {
+                    // 构造一个简化的事件对象，仅包含 code 和 keyType
+                    const simpleEvent = { code: record["code"], type: record["keyType"], isReplay: true };
+                    entity.controllerManager.controlEntry(simpleEvent);
+                }
+            }
+        }
     }
 
     beingReplay() {
         markLevel1ReplayStarted();
-        if (this.replayer) this.replayer.isReplaying = true;
+        if (this.replayer) {
+            this.replayer.isReplaying = true;
+            // 自动确保监听器已注册
+            this.replayer.createListeners && this.replayer.createListeners();
+        }
         this._pausedReplayElapsed = null;
         this.replayStartTime = performance.now();
 
@@ -449,7 +1060,6 @@ export class RecordSystem {
         }, this.recordEndTime - this.recordStartTime);
 
         this.dispatchEvent();
-
     }
 
     finishReplayAndReset() {
@@ -463,7 +1073,9 @@ export class RecordSystem {
         this._replayRecords = [];
         this._replayCursor = 0;
         this._pausedReplayElapsed = null;
-        this.replayer.inLevelReset();
+        if (this.replayer && typeof this.replayer.inLevelReset === 'function') {
+            this.replayer.inLevelReset();
+        }
     }
 
     finishReplayByKey() {
@@ -483,7 +1095,9 @@ export class RecordSystem {
         this._replayCursor = 0;
         this._pausedReplayElapsed = null;
         // 重置 replayer 位置和输入状态，保留监听器供下次回放使用
-        if (this.replayer) this.replayer.inLevelReset();
+        if (this.replayer && typeof this.replayer.inLevelReset === 'function') {
+            this.replayer.inLevelReset();
+        }
     }
 
     process(event) {

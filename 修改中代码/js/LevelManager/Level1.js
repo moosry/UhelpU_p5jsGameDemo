@@ -43,6 +43,44 @@ export class Level1 extends BaseLevel {
         });
         this.entities.add(cKeyPrompt);
 
+
+        // 右平台左侧一点放置空格键提示（长方形，label为␣）
+        // 位置略靠左，y与平台顶部对齐
+        const spaceKeyPromptWidth = 60;
+        const spaceKeyPromptHeight = 28;
+        const spaceKeyPromptX = platformX - 80; // 右平台左边+20像素
+        const spaceKeyPromptY = 80 + 20; // 平台顶部+10像素
+        const spaceKeyPrompt = new KeyPrompt(spaceKeyPromptX, spaceKeyPromptY, this, {
+            keys: [{ col: 0, row: 0, label: "␣", width: spaceKeyPromptWidth, height: spaceKeyPromptHeight }],
+        });
+        // 覆盖默认keySize，绘制成长方形
+        spaceKeyPrompt.keySize = spaceKeyPromptWidth;
+        spaceKeyPrompt.keyRectHeight = spaceKeyPromptHeight;
+        spaceKeyPrompt._drawKey = function(p, col, row, label, color, alpha) {
+            const x = col * (this.keySize + this.keySpacing);
+            const y = row * ((this.keyRectHeight || this.keySize) + this.keySpacing);
+            // 绘制长方形框（镂空）
+            p.push();
+            p.stroke(color[0], color[1], color[2], alpha);
+            p.strokeWeight(this.keyStrokeWeight);
+            p.noFill();
+            p.rect(x, y, this.keySize, this.keyRectHeight || this.keySize, 6);
+            p.pop();
+            // 绘制文字
+            p.push();
+            p.translate(x + this.keySize / 2, y + (this.keyRectHeight || this.keySize) / 2);
+            p.scale(1, -1);
+            p.translate(-(x + this.keySize / 2), -(y + (this.keyRectHeight || this.keySize) / 2));
+            p.fill(color[0], color[1], color[2], alpha);
+            p.noStroke();
+            p.textAlign(p.CENTER, p.CENTER);
+            p.textSize(18);
+            p.textStyle(p.BOLD);
+            p.text(label, x + this.keySize / 2, y + (this.keyRectHeight || this.keySize) / 2);
+            p.pop();
+        };
+        this.entities.add(spaceKeyPrompt);
+
         const missedPromptWidth = 280;
         const signboardRightX = signboard.x + signboard.w;
         const gapWidth = platformX - signboardRightX;

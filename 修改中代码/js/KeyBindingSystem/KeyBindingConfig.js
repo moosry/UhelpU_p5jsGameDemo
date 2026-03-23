@@ -6,7 +6,7 @@
 // 默认按键配置
 export const DEFAULT_KEYBINDING = {
   // 游戏控制
-  jump: 'KeyW',
+  jump: 'Space',
   moveLeft: 'KeyA',
   moveRight: 'KeyD',
   interaction: 'KeyE',
@@ -35,6 +35,11 @@ export class KeyBindingConfig {
     if (!hasInteraction && migrated.record === 'KeyE') {
       migrated.record = 'KeyC';
       migrated.interaction = 'KeyE';
+    }
+
+    // 老默认键位升级：历史版本 jump=KeyW 时统一迁移到 Space
+    if (migrated.jump === 'KeyW') {
+      migrated.jump = 'Space';
     }
     return migrated;
   }

@@ -1,0 +1,119 @@
+//很多的控制模式，一种最简单的控制模式
+//有起步加速和暂停惯性的控制模式
+//有空气阻力的控制模式
+//游泳的控制模式
+//拿着道具之后的控制模式
+//角色在哪个状态就启动哪个控制模式
+//有可能一整个关卡都只用一个控制模式
+//也有可能一整个关卡用的控制模式需要频繁切换，比如陆地->水里->陆地
+//监听输入的部分,不需要知道当前是哪个控制模式
+
+
+//但是把raw input翻译成中间层(意图层)需要知道在哪个控制模式
+//把意图翻译成可执行动作也需要知道在哪个控制模式
+//根据动作修改角色属性也和控制模式有关
+
+//比如有的控制模式不需要横向加速度
+//但是有的控制模式需要横向加速度
+//有的控制模式需要摩擦力
+//有的控制模式不需要摩擦力
+//控制模式决定什么?决定有哪些意图,决定控制相关的参数,决定如何把raw input变成意图, 把意图变成控制相关的参数
+//先只做一个控制模式,就是最简单的
+//abilityConditionSystem
+//动作（也就是经过筛选之后的真正可以实现的意图），也和控制模式有关
+// class MovementPipeline{//整个控制系统由浏览器事件驱动执行
+//     constructor() {
+//         this.controlMode;
+//     }
+//     changeControlMode(controlMode) {
+//         this.controlMode = controlMode;
+//     }
+
+//     //事件驱动入口
+//     controlEntry(event) {
+//         //输入 -> 意图 -> 动作 -> 物理
+//         //多态
+//         this.controlMode.inputToIntent();
+//         this.controlMode.IntentToAction();
+//         this.controlMode.ActionToPhysics();
+//     }
+// }
+    // keyDown(e) {
+    //     if(e.code === "KeyW" && this.wKeyDownCallbackExecutable === true) {
+    //         this.wKeyDownCallbackExecutable = false;
+    //         this.jump = true;
+    //     }
+    //     if(e.code === "KeyA") {
+    //         this.moveLeft = true;
+    //         this.moveRight = false;
+    //     }
+    //     if(e.code === "KeyD") {
+    //         this.moveRight = true;
+    //         this.moveLeft = false;
+    //     }
+    // }
+
+    // keyUp(e) {
+    //     if(e.code === "KeyW") {
+    //       this.wKeyDownCallbackExecutable = true;
+    //     }
+    //     if(e.code === "KeyA") {
+    //         this.moveLeft = false;
+    //     }
+    //     if(e.code === "KeyD") {
+    //         this.moveRight = false;
+    //     }
+    // }
+
+
+
+
+    // handleInput(rawInput){//rawInput:["left","jump"]
+    //     //"idle", "air"
+    //     const allowed = AllowedInputs[this.model.character.state];
+    //     const filteredInput = [];
+        
+    //     for(const input of rawInput){
+    //         if(!allowed.includes(input)){
+    //             result.push(input);
+    //         }
+    //     }
+    //     return filteredInput;
+    // }
+   
+    // control(filteredInput){
+    //     const state = this.model.character.state;
+        
+    //     switch(state){
+    //         case "idle":
+    //                 if(filteredInput.includes("left")){
+    //                     this.model.character.setVelocityX("left");
+    //                 }else if(filteredInput.includes("right")){
+    //                     this.model.character.setVelocityX("right");
+    //                 }
+
+    //                 if(filteredInput.includes("jump")){
+    //                     this.model.character.setVelocityY("jump");
+    //                     this.model.character.setAccelerationY("g");
+    //                 }
+    //         default:
+    //                 throw new Error("Unknown state type: " + state);
+    //     }
+    // }
+    // physics(){
+    //     let x = this.model.character.getPosition();
+    //     let v = this.model.character.getVelocity();
+    //     let a = this.model.character.getAcceleration();
+    //     v.x = v.x + a.x * t;
+    //     v.y = v.y + a.y * t;
+
+    //     x.x = x.x + v.x * t;
+    //     x.y = x.y + v.y * t;
+
+    //     this.model.character.setVelocity(v);
+    //     this.model.character.setPosition(x);
+    // }
+    // collide(){
+    //     collideResult = collideDetectionSystem(this.model);
+    //     collideReponse(this.model, collideResult);
+    //     modifyCharacterState(this.model, collideResult);

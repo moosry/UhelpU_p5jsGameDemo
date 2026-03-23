@@ -1,150 +1,124 @@
-import { Player, Replayer, Ground, Wall, Portal } from "../GameEntityModel/index.js";
+import { Level3Config } from "./Level3/Level3Config.js";
+import { TransitionController } from "./Level3/TransitionController.js";
+import { Player } from "../GameEntityModel/index.js";
+import { Ladder } from "../GameEntityModel/Ladder.js";
+import { LadderSystem } from "../GameEntityModel/LadderSystem.js";
 import { CollisionSystem } from "../CollideSystem/CollisionSystem.js";
 import { PhysicsSystem } from "../PhysicsSystem/PhysicsSystem.js";
 import { RecordSystem } from "../RecordSystem/RecordSystem.js";
 import { BaseLevel } from "./BaseLevel.js";
 import { Assets } from "../AssetsManager.js";
-import { Room } from "./Room.js";
+import { KeyBindingManager } from "../KeyBindingSystem/KeyBindingManager.js";
+import { AssembleRooms } from "./Level3/AssembleRooms.js";
+import { EntityManager } from "./Level3/EntityManager.js";
 
 export class Level3 extends BaseLevel {
     constructor(p, eventBus) {
         super(p, eventBus);
-        this.activeRoomIndex = 0;
-        this._replayer = null;
-        this._transition = null;
-        this._transitionDurationMs = 260;
+        // 过渡/相机控制器
+        this.transitionController = new TransitionController(
+            2, // 房间数量，后续可自动获取
+            p.width,
+            260
+        );
+        this.ladderSystem = new LadderSystem();
 
-        this.rooms = this._buildRooms(p);
-        this._applyWorldOffsetsToRooms(p);
+        // 配置参数
+        const cfg = Level3Config;
+        // ====== 动态布局参数计算 ======
+        const leftHighPlatformX = 200 + cfg.obstacleOffsetX;
+        const leftHighPlatformTopY = cfg.highPlatformY + cfg.highPlatformH;
+        const ladderX = leftHighPlatformX + 50;
+        const ladderW = 52;
+        const ladderBottomY = leftHighPlatformTopY + 6;
+        const ladderHeight = cfg.ladderHeight;
+        const upperRoomW = cfg.upperRoomW;
+        const upperRoomH = cfg.upperRoomH;
+        const upperRoomX = ladderX + (ladderW - upperRoomW) / 2;
+        const ladderTopY = ladderBottomY + ladderHeight;
+        const upperRoomFloorY = ladderTopY;
+        // 只让梯子本体延申20像素，布局参数不变
+        this._ladders = [new Ladder(ladderX, ladderBottomY, ladderW, ladderHeight + 20)];
+        const homeWallThickness = cfg.homeWallThickness;
+        const homeDoorW = ladderW;
+        const homeDoorX = ladderX;
+        const homeDoorY = upperRoomFloorY;
+        const buttonW = cfg.buttonW;
+        const buttonH = cfg.buttonH;
+        const buttonY = ladderTopY;
+        const leftButtonX = upperRoomX + 32 + 16;
+        const rightButtonX = upperRoomX + upperRoomW - 32 - 16 - buttonW;
+        const leftButton = { x: leftButtonX, y: buttonY, w: buttonW, h: buttonH };
+        const rightButton = { x: rightButtonX, y: buttonY, w: buttonW, h: buttonH };
+        // ====== 组装房间参数 ======
+        const roomParams = {
+            ...cfg,
+            leftHighPlatformX,
+            leftHighPlatformTopY,
+            ladderX,
+            ladderW,
+            ladderBottomY,
+            ladderHeight,
+            upperRoomW,
+            upperRoomH,
+            upperRoomX,
+            upperRoomFloorY,
+            homeWallThickness,
+            homeDoorW,
+            homeDoorX,
+            homeDoorY,
+            leftButton,
+            rightButton
+        };
+        this.rooms = AssembleRooms(p, roomParams, this._ladders, [leftButton, rightButton]);
 
-        const wallThickness = 20;
-        this._player = new Player(wallThickness + 10, 80, 40, 40);
+        this._player = new Player(cfg.wallThickness + 10, 80, 40, 40);
+        this._player.lockControlThisFrame = false;
         this._player.createListeners();
+        this._playerDefaultAccY = this._player.movementComponent.accY;
 
-        this.entities = this._buildEntities();
-
-        this.recordSystem = new RecordSystem(this._player, 5000, (x, y) => this.addReplayer(x, y), () => this.removeReplayer());
-        this.recordSystem.createListeners();
+        this.entityManager = new EntityManager(this._player, this.rooms);
+        this.entities = this.entityManager.getEntities();
 
         this.physicsSystem = new PhysicsSystem(this.entities);
         this.collisionSystem = new CollisionSystem(this.entities, eventBus);
-    }
+        this.ladderSystem.enable(this._player, this.entities);
 
-    _buildRooms(p) {
-        const wallThickness = 20;
-
-        const room0 = new Room(
-            [
-                new Wall(0, 0, wallThickness, p.height),
-                new Ground(0, 0, p.width, 80),
-                new Ground(200, 160, 160, 20, true),
-            ],
-            {
-                right: { targetRoomIndex: 1 },
-            }
-        );
-
-        const room1 = new Room(
-            [
-                new Wall(p.width - wallThickness, 0, wallThickness, p.height),
-                new Ground(0, 0, p.width, 80),
-                new Ground(360, 130, 140, 20, true),
-                new Ground(600, 200, 160, 20, true),
-            ],
-            {
-                left: { targetRoomIndex: 0 },
-            }
-        );
-
-        const portal = new Portal(700, 220, 50, 50);
-        portal.openPortal();
-        room1.entities.add(portal);
-
-        return [room0, room1];
-    }
-
-    _applyWorldOffsetsToRooms(p) {
-        for (let i = 0; i < this.rooms.length; i++) {
-            const offsetX = i * p.width;
-            for (const entity of this.rooms[i].entities) {
-                entity.x += offsetX;
-            }
+        const keyBindingManager = KeyBindingManager.getInstance();
+        if (keyBindingManager.getKeyByIntent("jump") === "KeyW") {
+            keyBindingManager.rebind("jump", "Space");
         }
-    }
 
-    _buildEntities() {
-        const set = new Set();
-        for (const room of this.rooms) {
-            for (const entity of room.entities) {
-                set.add(entity);
-            }
-        }
-        set.add(this._player);
-        if (this._replayer) set.add(this._replayer);
-        return set;
-    }
-
-    _rebuildEntities() {
-        this.entities = this._buildEntities();
-        this.physicsSystem.setEntities(this.entities);
-        this.collisionSystem.setEntities(this.entities);
-    }
-
-    _checkRoomTransition(p) {
-        const player = this._player;
-        const room   = this.rooms[this.activeRoomIndex];
-        const leftBound = this.activeRoomIndex * p.width;
-        const rightBound = leftBound + p.width;
-
-        if (player.x + player.collider.w > rightBound && room.exits.right) {
-            this._switchRoom(room.exits.right.targetRoomIndex, "right");
-        } else if (player.x < leftBound && room.exits.left) {
-            this._switchRoom(room.exits.left.targetRoomIndex, "left");
-        }
-    }
-
-    _switchRoom(roomIndex, direction) {
-        if (roomIndex === this.activeRoomIndex) return;
-        const fromRoomIndex = this.activeRoomIndex;
-        this.activeRoomIndex = roomIndex;
-
-        this._transition = {
-            fromRoomIndex,
-            toRoomIndex: roomIndex,
-            direction,
-            elapsedMs: 0,
+        // 包装回调，保证每次增删分身后同步实体集合到所有系统
+        const syncAllEntities = () => {
+            this.entityManager.syncEntities(this.collisionSystem, this.ladderSystem);
+            this.physicsSystem.setEntities(this.entityManager.getEntities());
         };
+            this.recordSystem = new RecordSystem(
+                this._player,
+                5000,
+                (x, y) => {
+                    const rep = this.entityManager.addReplayer(x, y);
+                    syncAllEntities();
+                    return rep;
+                },
+                () => {
+                    this.entityManager.removeReplayer();
+                    syncAllEntities();
+                },
+                this.ladderSystem, // 新增：传递 LadderSystem 实例
+                this.entities      // 新增：传递 entities 给 RecordSystem
+            );
+        this.recordSystem.createListeners();
     }
 
-    _easeOutCubic(t) {
-        return 1 - Math.pow(1 - t, 3);
-    }
 
-    _updateTransition(p) {
-        if (!this._transition) return;
 
-        const dt = p.deltaTime || 16;
-        this._transition.elapsedMs += dt;
 
-        if (this._transition.elapsedMs >= this._transitionDurationMs) {
-            this._transition = null;
-        }
-    }
-
-    _getCameraX(p) {
-        if (!this._transition) {
-            return this.activeRoomIndex * p.width;
-        }
-
-        const t = Math.min(1, this._transition.elapsedMs / this._transitionDurationMs);
-        const eased = this._easeOutCubic(t);
-        const fromX = this._transition.fromRoomIndex * p.width;
-        const toX = this._transition.toRoomIndex * p.width;
-        return fromX + (toX - fromX) * eased;
-    }
+    // 房间切换与相机全部交给 TransitionController
 
     getViewBounds(p = this.p) {
-        const cameraX = this._getCameraX(p);
+        const cameraX = this.transitionController.getCameraX();
         return {
             minX: cameraX,
             maxX: cameraX + p.width,
@@ -156,36 +130,19 @@ export class Level3 extends BaseLevel {
     clearLevel(p = this.p, eventBus = this.eventBus) {
         this.recordSystem.clearAllListenersAndTimers();
         this._player.clearListeners();
+        this.ladderSystem.disable();
     }
 
-    addReplayer(startX, startY) {
-        if (this._replayer === null) {
-            this._replayer = new Replayer(startX, startY, 40, 40);
-            this._replayer.createListeners();
-            this.entities.add(this._replayer);
-            this.physicsSystem.setEntities(this.entities);
-            this.collisionSystem.setEntities(this.entities);
-            return this._replayer;
-        }
-    }
+    // 梯子输入监听和状态管理已迁移到 LadderSystem
 
-    removeReplayer() {
-        if (this._replayer !== null) {
-            this._replayer.clearEventListeners();
-            this.entities.delete(this._replayer);
-            this._replayer = null;
-            this.physicsSystem.setEntities(this.entities);
-            this.collisionSystem.setEntities(this.entities);
-        }
-    }
 
-    referenceOfPlayer() { return this._player ?? null; }
-    referenceOfReplayer() { return this._replayer ?? null; }
+    referenceOfPlayer() { return this.entityManager.referenceOfPlayer(); }
+    referenceOfReplayer() { return this.entityManager.referenceOfReplayer(); }
 
     clearCanvas(p = this.p, cameraNudgeX = 0, bgParallaxFactor = 1) {
-        const cameraX = this._getCameraX(p);
+        const cameraX = this.transitionController.getCameraX();
         const bgOffsetX = cameraNudgeX * bgParallaxFactor;
-        const bg = Assets.bgImageLevel3;
+        const bg = Assets && Assets.bgImageLevel3;
         if (bg) {
             p.push();
             p.translate(-cameraX - bgOffsetX, 0);
@@ -199,30 +156,44 @@ export class Level3 extends BaseLevel {
         }
     }
 
+
+    // 梯子判定已迁移到 LadderSystem
+
+    // 梯子爬行状态管理已迁移到 LadderSystem
+
+    // 不再需要 _drawLadders，Ladder 实体自己绘制
+
     updatePhysics() {
+        this.ladderSystem.update();
         this.physicsSystem.physicsEntry();
     }
 
     updateCollision(p = this.p, eventBus = this.eventBus) {
         this.collisionSystem.collisionEntry(eventBus);
-
-        if (this._transition) {
-            this._updateTransition(p);
+        // 过渡动画
+        if (this.transitionController._transition) {
+            this.transitionController.updateTransition(p.deltaTime || 16);
             return;
         }
-
-        this._checkRoomTransition(p);
+        // 检查房间切换
+        this.transitionController.checkRoomTransition(this._player, this.rooms);
+        // 保证实体集合始终同步
+        this.entities = this.entityManager.getEntities();
+        this.collisionSystem.setEntities(this.entities);
+        this.ladderSystem.entities = this.entities;
     }
 
     draw(p = this.p) {
-        const cameraX = this._getCameraX(p);
+        const cameraX = this.transitionController.getCameraX();
         p.push();
         p.translate(-cameraX, 0);
+        // 梯子已作为实体自动绘制
         for (const entity of this.entities) {
             entity.draw(p);
         }
         p.pop();
-
-        this.recordSystem.draw && this.recordSystem.draw(p);
+        if (this.recordSystem && typeof this.recordSystem.draw === "function") {
+            this.recordSystem.draw(p);
+        }
     }
 }

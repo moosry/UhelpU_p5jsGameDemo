@@ -83,5 +83,22 @@ export class ControllerManager {//多例模式，每个可操控角色拥有一�
         if(this.currentControlMode && typeof this.currentControlMode.tick === "function") {
             this.currentControlMode.tick();
         }
+        // --- 同步 owner.input 字段，供 LadderSystem 使用 ---
+        if (this.owner) {
+            // 只支持 up/down/left/right，后续可扩展
+            const input = {};
+            const pressed = this.currentControlMode?.eventProcesser?.pressedKeys;
+            const kbm = this.currentControlMode?.intentResolver?.keyBindingManager;
+            if (pressed && kbm) {
+                for (const code of pressed) {
+                    const intent = kbm.getIntentByKey(code);
+                    if (intent === "moveUp" || intent === "jump") input.up = true;
+                    if (intent === "moveDown") input.down = true;
+                    if (intent === "moveLeft") input.left = true;
+                    if (intent === "moveRight") input.right = true;
+                }
+            }
+            this.owner.input = input;
+        }
     }
 }

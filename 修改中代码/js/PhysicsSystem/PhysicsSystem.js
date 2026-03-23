@@ -22,7 +22,7 @@ export class PhysicsSystem {
                 // 每帧重置isOnGround，只有通过碰撞检测时才设置为true
                 if(entity.controllerManager) {
                     entity.controllerManager.currentControlComponent.abilityCondition["isOnGround"] = false;
-                    if(!blockedXLastFrame) {
+                    if(!blockedXLastFrame && !entity.lockControlThisFrame) {
                         entity.controllerManager.tick();
                     }
                 }

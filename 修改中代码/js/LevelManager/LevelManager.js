@@ -130,6 +130,12 @@ export class LevelManager {
             this.level.clearLevel(p, eventBus);
             this.level = null;
             this.cameraNudgeX = 0;
+            // 卸载关卡后强制清空画布，防止残留
+            if (p && typeof p.clear === 'function') {
+                p.clear();
+            } else if (p && typeof p.background === 'function') {
+                p.background(255);
+            }
             console.log("unload level");
         }
     }

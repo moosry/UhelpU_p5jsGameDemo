@@ -20,6 +20,46 @@ function getCloneSprite(velX, velY, isOnGround) {
 }
 
 export class Replayer extends Character {
+            _updateTrailParticles(p, drawX, drawY, shouldEmit, velX) {
+                for (let i = this._trailParticles.length - 1; i >= 0; i--) {
+                    const particle = this._trailParticles[i];
+                    particle.x += particle.vx;
+                    particle.y += particle.vy;
+                    particle.life -= 1;
+                    if (particle.life <= 0) {
+                        this._trailParticles.splice(i, 1);
+                    }
+                }
+
+                if (!shouldEmit) return;
+
+                this._trailEmitAccumulator += Math.max(Math.abs(velX) * 0.2, 0.6);
+                while (this._trailEmitAccumulator >= 1) {
+                    this._trailEmitAccumulator -= 1;
+                    const spawnX = velX >= 0
+                        ? drawX - p.random(1, 4)
+                        : drawX + this.collider.w + p.random(1, 4);
+                    const spawnY = drawY + p.random(1, 4);
+                    const size = p.random(2, 4);
+                    const life = Math.floor(p.random(10, 18));
+                    this._trailParticles.push({
+                        x: spawnX,
+                        y: spawnY,
+                        vx: p.random(-0.25, 0.25),
+                        vy: p.random(-0.12, 0.12),
+                        size,
+                        life,
+                        maxLife: life,
+                    });
+                }
+            }
+        createListeners() {
+            this.controllerManager.createListeners();
+        }
+
+        clearListeners() {
+            this.controllerManager.clearListeners();
+        }
     constructor(x, y, w, h) {
         super(x, y);
         this.type = "replayer";
@@ -38,37 +78,47 @@ export class Replayer extends Character {
                 this._trailParticles = [];
                 this._trailEmitAccumulator = 0;
                 this._jumpRingEffects = [];
-                this._jumpBurstParticles = [];
-                this._wasOnGround = true;
-                this._trailFacing = 1;
+        this._jumpBurstParticles = [];
+        this._wasOnGround = true;
+        this._trailFacing = 1;
     }
-    createListeners() {
-        this.controllerManager.createListeners();
-    }
-    clearListeners() {
-        this.controllerManager.clearListeners();
-    }
-    _updateTrailParticles(p, drawX, drawY, shouldEmit, velX) {
-        for (let i = this._trailParticles.length - 1; i >= 0; i--) {
-            const particle = this._trailParticles[i];
-            particle.x += particle.vx;
-            particle.y += particle.vy;
-            particle.life -= 1;
-            if (particle.life <= 0) {
-                this._trailParticles.splice(i, 1);
+
+    draw(p) {
+        let drawX = this.x;
+        let drawY = this.y;
+
+        // 调试：打印分身 pressedKeys
+        if (this.isReplaying && this.controllerManager?.currentControlMode?.eventProcesser?.pressedKeys) {
+            const keys = Array.from(this.controllerManager.currentControlMode.eventProcesser.pressedKeys);
+            if (keys.length > 0) {
+                console.log('[Replayer pressedKeys]', keys);
             }
         }
 
-        if (!shouldEmit) return;
+        if (!this.isReplaying) {
+            drawX = this.startX;
+            drawY = this.startY;
+            this.x = this.startX;
+            this.y = this.startY;
+            this.movementComponent.velX = 0;
+            this.movementComponent.velY = 0;
+        }
 
-        this._trailEmitAccumulator += Math.max(Math.abs(velX) * 0.2, 0.6);
-        while (this._trailEmitAccumulator >= 1) {
-            this._trailEmitAccumulator -= 1;
-            const spawnX = velX >= 0
-                ? drawX - p.random(1, 4)
-                : drawX + this.collider.w + p.random(1, 4);
-            const spawnY = drawY + p.random(1, 4);
-            const size = p.random(2, 4);
+        if (!this.isReplaying) {
+            this._trailParticles = [];
+            this._trailEmitAccumulator = 0;
+            this._jumpRingEffects = [];
+            this._jumpBurstParticles = [];
+            this._idleStartMs = null;
+            this._wasOnGround = true;
+            const ghostSprite = (Array.isArray(Assets.cloneIdleImgs) && Assets.cloneIdleImgs.length >= 1)
+                ? Assets.cloneIdleImgs[0]
+                : Assets.cloneImg_right;
+            this._lastSprite = ghostSprite || this._lastSprite;
+
+            if (this._lastSprite) {
+                /*...*/
+        }
             const life = Math.floor(p.random(10, 18));
             this._trailParticles.push({
                 x: spawnX,
