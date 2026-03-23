@@ -1,4 +1,5 @@
 import { t } from "../i18n.js";
+import { Assets } from "../AssetsManager.js";
 import { shouldShowLevel1PromptByRule } from "../GameRuntime/Level1PromptState.js";
 import { KeyPrompt } from "./KeyPrompt.js";
 
@@ -38,6 +39,9 @@ export class TextPrompt extends KeyPrompt {
     p.fill(this.textColor[0], this.textColor[1], this.textColor[2], alpha);
     p.noStroke();
     p.textAlign(p.CENTER, p.CENTER);
+    if (Assets.customFont) {
+      p.textFont(Assets.customFont);
+    }
     p.textSize(this.textSizeValue);
     p.textStyle(p.BOLD);
     p.textLeading(this.lineHeight);

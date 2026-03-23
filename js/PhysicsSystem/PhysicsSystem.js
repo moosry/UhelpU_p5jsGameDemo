@@ -19,8 +19,12 @@ export class PhysicsSystem {
                 entity.prevY = entity.y;
                 const blockedXLastFrame = entity.blockedXLastFrame === true;
                 entity.blockedXLastFrame = false;
-                if(entity.controllerManager && !blockedXLastFrame) {
-                    entity.controllerManager.tick();
+                // 每帧重置isOnGround，只有通过碰撞检测时才设置为true
+                if(entity.controllerManager) {
+                    entity.controllerManager.currentControlComponent.abilityCondition["isOnGround"] = false;
+                    if(!blockedXLastFrame) {
+                        entity.controllerManager.tick();
+                    }
                 }
                 m.velY = m.velY + m.accY;
                 m.velX = m.velX + m.accX;

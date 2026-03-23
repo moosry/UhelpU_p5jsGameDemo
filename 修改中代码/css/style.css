@@ -241,6 +241,18 @@ canvas {
   background-color: rgba(255, 255, 255, 0.3);
 }
 
+.menu-subtitle {
+  position: absolute;
+  transform: translateX(-50%);
+  color: #ffffff;
+  font-family: 'HYPixel11', 'PixelFont', sans-serif;
+  font-size: 30px;
+  letter-spacing: 0.08em;
+  text-align: center;
+  pointer-events: none;
+  z-index: 20;
+}
+
 /* 开始按钮 */
 .start-button {
   color: #0d010b;
@@ -248,7 +260,7 @@ canvas {
   -webkit-text-stroke: 1px #0d010b;
   border: 3px solid #4c1745;
   border-radius: 50%;
-  font-size: 47px;
+  font-size: 42px;
   background-color: rgba(101, 78, 119, 0.8);
   box-sizing: border-box;
   display: flex;
@@ -273,7 +285,7 @@ canvas {
   -webkit-text-stroke: 1px #0d010b;
   border: 3px solid #4c1745;
   border-radius: 50%;
-  font-size: 20px;
+  font-size: 16px;
   background-color: rgba(101, 78, 119, 0.8);
   box-sizing: border-box;
   display: flex;
@@ -297,7 +309,7 @@ canvas {
   -webkit-text-stroke: 1px #0d010b;
   border: 3px solid #4c1745;
   border-radius: 50%;
-  font-size: 20px;
+  font-size: 18px;
   background-color: rgba(101, 78, 119, 0.8);
   box-sizing: border-box;
   display: flex;
@@ -320,6 +332,7 @@ canvas {
   border: 3px solid #39073a;
   background-color: rgba(191, 157, 212, 0.1);
   color: #fff3fd;
+  font-family: 'HYPixel11', 'PixelFont', sans-serif;
   font-weight: bold;
   -webkit-text-stroke: 0.2px #ffeafc;
   display: flex;
@@ -388,7 +401,7 @@ canvas {
   align-items: center;
   justify-content: center;
   font-family: 'HYPixel11', 'PixelFont', sans-serif;
-  font-size: 16px;
+  font-size: 50px;
   color: #fff3fd;
   background-color: rgba(101, 78, 119, 0.6);
   border: 2px solid #4c1745;
@@ -405,8 +418,8 @@ canvas {
   perspective: 600px;
   cursor: pointer;
   position: absolute;
-  width: 200px;
-  height: 250px;
+  width: 400px;
+  height: 420px;
 }
 .hint-notebook-button .flipper {
   position: relative;
@@ -430,7 +443,7 @@ canvas {
   align-items: center;
   justify-content: center;
   font-family: 'HYPixel11', 'PixelFont', sans-serif;
-  font-size: 16px;
+  font-size: 30px;
   color: #fff3fd;
   background-color: rgba(101, 78, 119, 0.6);
   border: 2px solid #4c1745;
@@ -456,6 +469,31 @@ canvas {
   font-size: 18px;
   line-height: 1.25;
   padding: 16px;
+}
+
+.hint-notebook-button .hint-face-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.hint-notebook-button .hint-face-image {
+  width: 100%;
+  max-height: 58%;
+  object-fit: contain;
+  display: block;
+}
+
+.hint-notebook-button .hint-face-text {
+  width: 100%;
+  text-align: center;
+  font-family: 'HYPixel11', 'PixelFont', sans-serif;
+  line-height: 1.25;
+  white-space: normal;
 }
 
 /* 背面"安装模块"按钮 */

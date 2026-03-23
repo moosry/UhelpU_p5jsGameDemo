@@ -15,11 +15,11 @@ export class Level1 extends BaseLevel {
         this.entities.add(new Ground(0, 0, p.width, 80));
         const platformWidth = 200;
         const platformX = p.width - wallThickness - platformWidth;
-        this.entities.add(new Ground(platformX, 80, platformWidth, 150, true));
+        this.entities.add(new Ground(platformX, 80, platformWidth, 120, true));
         // 将门改为 Portal，大小统一为 50x50
         const portalSize = 50;
         const portalX = p.width - wallThickness - portalSize;
-        const portal = new Portal(portalX, 80 + 150, portalSize, portalSize);
+        const portal = new Portal(portalX, 80 + 120, portalSize, portalSize);
         portal.openPortal(); // Level1 的门默认解锁
         this.entities.add(portal);
 

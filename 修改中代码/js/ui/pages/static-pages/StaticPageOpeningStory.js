@@ -16,8 +16,18 @@ export class StaticPageOpeningStory extends PageBase {
     // 语言切换时更新笔记本按鈕内容
     this._i18nHandler = () => {
       if (this._hintBtn) {
-        this._hintBtn.front.html(t('notebook_front'));
-        this._hintBtn.back.html(t('notebook_back'));
+        this._hintBtn.front.html(`
+          <div class="hint-face-content">
+            <img class="hint-face-image" src="assets/images/bg/follower1.png" alt="follower1" />
+            <div class="hint-face-text">${t('notebook_front')}</div>
+          </div>
+        `);
+        this._hintBtn.back.html(`
+          <div class="hint-face-content">
+            <img class="hint-face-image" src="assets/images/bg/follower2.png" alt="follower2" />
+            <div class="hint-face-text">${t('notebook_back')}</div>
+          </div>
+        `);
       }
     };
     i18n.onChange(this._i18nHandler);
@@ -48,8 +58,18 @@ export class StaticPageOpeningStory extends PageBase {
     const hintBtnFlip = new HintButton(p, '', 0.55 * p.width, 0.25 * p.height, () => {
       console.log('提示翻页按钮点击');
     }, 'my-custom-class');
-    hintBtnFlip.front.html(t('notebook_front'));
-    hintBtnFlip.back.html(t('notebook_back'));
+    hintBtnFlip.front.html(`
+      <div class="hint-face-content">
+        <img class="hint-face-image" src="assets/images/bg/follower1.png" alt="follower1" />
+        <div class="hint-face-text">${t('notebook_front')}</div>
+      </div>
+    `);
+    hintBtnFlip.back.html(`
+      <div class="hint-face-content">
+        <img class="hint-face-image" src="assets/images/bg/follower2.png" alt="follower2" />
+        <div class="hint-face-text">${t('notebook_back')}</div>
+      </div>
+    `);
     this._hintBtn = hintBtnFlip;
     this.addElement(hintBtnFlip);
 
@@ -60,7 +80,7 @@ export class StaticPageOpeningStory extends PageBase {
     this.scrollModule = new ScrollTextModule(p, storyTexts, () => {
       this.switcher.showLevelChoice(p);
     }, {
-      speed: 1,
+      speed: 1.5,
       fadeHeight: 100,
       scrollRect: { x: 0.1 * p.width, y: 0.25 * p.height, w: 0.33 * p.width, h: 0.66 * p.height }
     });

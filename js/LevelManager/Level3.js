@@ -182,12 +182,13 @@ export class Level3 extends BaseLevel {
     referenceOfPlayer() { return this._player ?? null; }
     referenceOfReplayer() { return this._replayer ?? null; }
 
-    clearCanvas(p = this.p) {
+    clearCanvas(p = this.p, cameraNudgeX = 0, bgParallaxFactor = 1) {
         const cameraX = this._getCameraX(p);
+        const bgOffsetX = cameraNudgeX * bgParallaxFactor;
         const bg = Assets.bgImageLevel3;
         if (bg) {
             p.push();
-            p.translate(-cameraX, 0);
+            p.translate(-cameraX - bgOffsetX, 0);
             p.scale(1, -1);
             for (let i = 0; i < this.rooms.length; i++) {
                 p.image(bg, i * p.width, -p.height, p.width, p.height);

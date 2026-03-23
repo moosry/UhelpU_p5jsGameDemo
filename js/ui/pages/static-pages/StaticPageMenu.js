@@ -18,6 +18,11 @@ export class StaticPageMenu extends PageBase {
 
     AudioManager.playBGM('menu');
 
+    const subtitle = p.createDiv(t('menu_subtitle'));
+    subtitle.addClass('menu-subtitle');
+    subtitle.position(0.5 * p.width, 0.45 * p.height);
+    this.addElement(subtitle);
+
     // PLAY 按钮 → 进入开场动画
     const startBtn = new ButtonBase(p, t('btn_play'), 0.456 * p.width, 0.794 * p.height, () => {
       this.switcher.showOpeningScene(p);
@@ -35,7 +40,7 @@ export class StaticPageMenu extends PageBase {
     this.addElement(settingsBtn);
 
     // Credits 按钮
-    const creditsBtn = new ButtonBase(p, t('btn_credits'), 0.588 * p.width, 0.822 * p.height, () => {
+    const creditsBtn = new ButtonBase(p, t('btn_credits'), 0.583 * p.width, 0.816 * p.height, () => {
       this.switcher.showCredits(p);
     }, 'credits-button');
     creditsBtn.btn.style('width', 0.06 * p.width + 'px');
@@ -47,9 +52,9 @@ export class StaticPageMenu extends PageBase {
       p,
       Assets.followerImg1,
       p.width * 0.5,
-      p.height * 0.11,
-      0.047 * p.width,
-      80
+      p.height * 0.113,
+      0.040 * p.width,
+      60
     );
   }
 

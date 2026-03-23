@@ -5,11 +5,12 @@ import { Assets } from "../../../AssetsManager.js";
 import { AudioManager } from '../../../AudioManager.js';
 
 export class StaticPageResult extends PageBase {
-  constructor(result, levelIndex, switcher, p) {
+  constructor(result, levelIndex, switcher, p, eventBus) {
     super(switcher);
     this.result = result;
     this.levelIndex = levelIndex;
     this.p = p;
+    this.eventBus = eventBus;
 
     const levelNum = parseInt(this.levelIndex.replace("level", ""), 10);
 
@@ -20,7 +21,7 @@ export class StaticPageResult extends PageBase {
     this.addElement(backBtn);
 
     const restartBtn = new ButtonBase(p, t('btn_restart'), p.width/2 - 60, p.height/2 + 106, () => {
-      this.switcher.gameSwitcher.loadLevel(levelNum, p);
+      this.eventBus.publish("loadLevel", `level${levelNum}`);
     }, 'restart-button');
     restartBtn.btn.style('font-size', '20px');
     this.addElement(restartBtn);

@@ -7,44 +7,65 @@ export const resolverMap = {
 }
 
 function resolveFirst(a, b) {
-    let  collisionMsg= "";
-
-    let vectorX = (a.x+a.collider.w/2) - (b.x+b.collider.w/2);
-    let vectorY = (a.y+a.collider.h/2) - (b.y+b.collider.h/2);
-
-    let combinedHalfWidths = a.collider.w/2 + b.collider.w/2;
-    let combinedHalfHeights = a.collider.h/2 + b.collider.h/2;
-
-    //collision happened
-    let overlapX = combinedHalfWidths - Math.abs(vectorX);
-    let overlapY = combinedHalfHeights - Math.abs(vectorY);
+    let collisionMsg = "";
 
     const prevY = (a.prevY !== undefined) ? a.prevY : a.y;
+    const prevX = (a.prevX !== undefined) ? a.prevX : a.x;
+
     const prevBottom = prevY;
-    const prevTop = prevY + a.collider.h;
+    const prevTop    = prevY + a.collider.h;
     const currBottom = a.y;
-    const currTop = a.y + a.collider.h;
-    const staBottom = b.y;
-    const staTop = b.y + b.collider.h;
+    const currTop    = a.y + a.collider.h;
+    const staBottom  = b.y;
+    const staTop     = b.y + b.collider.h;
+    const staLeft    = b.x;
+    const staRight   = b.x + b.collider.w;
+    const prevRight  = prevX + a.collider.w;
+    const prevLeft   = prevX;
+    const currRight  = a.x + a.collider.w;
+    const currLeft   = a.x;
 
-    const crossedFromAbove = prevBottom >= staTop && currBottom < staTop;
-    const crossedFromBelow = prevTop <= staBottom && currTop > staBottom;
+    const crossedFromAbove = prevBottom >= staTop  && currBottom < staTop;
+    const crossedFromBelow = prevTop    <= staBottom && currTop    > staBottom;
+    // X轴帧穿越：防止高速水平移动时被错判为vertical碰撞
+    const crossedFromLeft  = prevRight  <= staLeft  && currRight  > staLeft;
+    const crossedFromRight = prevLeft   >= staRight && currLeft   < staRight;
 
-    // 使用帧穿越判定优先决定上下碰撞来源，避免被挤穿平台
-    if(crossedFromAbove) {
+    // Y轴穿越优先：落地 / 顶头
+    if (crossedFromAbove) {
         collisionMsg = "bottom";
         a.y = staTop;
+        a.prevY = a.y;
         return collisionMsg;
     }
-
-    if(crossedFromBelow) {
+    if (crossedFromBelow) {
         collisionMsg = "top";
         a.y = staBottom - a.collider.h;
+        a.prevY = a.y;
+        return collisionMsg;
+    }
+    // X轴穿越：从侧面高速撞入
+    if (crossedFromLeft) {
+        collisionMsg = "right";
+        a.x = staLeft - a.collider.w;
+        return collisionMsg;
+    }
+    if (crossedFromRight) {
+        collisionMsg = "left";
+        a.x = staRight;
         return collisionMsg;
     }
 
-    if(overlapX <= overlapY) {
-        if(vectorX > 0) {
+    // Fallback：玩家在上一帧已经与平台重叠（极罕见），用最小重叠量弹出
+    let vectorX = (a.x + a.collider.w / 2) - (b.x + b.collider.w / 2);
+    let vectorY = (a.y + a.collider.h / 2) - (b.y + b.collider.h / 2);
+    let combinedHalfWidths  = a.collider.w / 2 + b.collider.w / 2;
+    let combinedHalfHeights = a.collider.h / 2 + b.collider.h / 2;
+    let overlapX = combinedHalfWidths  - Math.abs(vectorX);
+    let overlapY = combinedHalfHeights - Math.abs(vectorY);
+
+    if (overlapX <= overlapY) {
+        if (vectorX > 0) {
             collisionMsg = "left";
             a.x = a.x + overlapX;
         } else {
@@ -52,17 +73,16 @@ function resolveFirst(a, b) {
             a.x = a.x - overlapX;
         }
     } else {
-        const platformTop = b.y + b.collider.h;
-
-        if(prevY >= platformTop) {
-            // 上一帧在平台上方 → 正常落在平台上
+        if (vectorY > 0) {
+            // 玩家中心在平台中心上方 → 落在平台顶上
             collisionMsg = "bottom";
-            a.y = platformTop;
+            a.y = staTop;
         } else {
-            // 上一帧在平台下方 → 推回平台下方，不允许穿过
+            // 玩家中心在平台中心下方 → 推到平台底下
             collisionMsg = "top";
             a.y = b.y - a.collider.h;
         }
+        a.prevY = a.y;
     }
     return collisionMsg;
 }

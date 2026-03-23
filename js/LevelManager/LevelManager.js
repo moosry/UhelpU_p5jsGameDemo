@@ -2,6 +2,8 @@ import { Level1 } from "./Level1.js";
 import { Level2 } from "./Level2.js";
 import { Level3 } from "./Level3.js";
 import { setGamePaused } from "../GameRuntime/GamePauseState.js";
+import { Assets } from "../AssetsManager.js";
+import { t } from "../i18n.js";
 
 export class LevelManager {
     constructor(p, eventBus) {
@@ -15,12 +17,111 @@ export class LevelManager {
         this.level = null;
         this.currentLevelIndex = null;
         this.paused = false;
+        this.cameraNudgeX = 0;
+        this.maxCameraNudgeX = 60;
+        this.cameraNudgeLerp = 0.02;
+        this.bgParallaxFactor = 1.8;
+        this.levelTitleOverlay = {
+            active: false,
+            startedAtMs: 0,
+            totalDurationMs: 2500,
+            fadeStartMs: 1300,
+            titleKey: "",
+        };
     }
+
+    startLevelTitleOverlay(levelIndex, p = this.p) {
+        const num = String(levelIndex || "").replace("level", "");
+        const key = "level" + num + "_title";
+        this.levelTitleOverlay.active = true;
+        this.levelTitleOverlay.startedAtMs = p?.millis ? p.millis() : performance.now();
+        this.levelTitleOverlay.titleKey = key;
+    }
+
+    drawLevelTitleOverlay(p = this.p) {
+        const overlay = this.levelTitleOverlay;
+        if (!overlay.active || !overlay.titleKey) return;
+
+        const nowMs = p?.millis ? p.millis() : performance.now();
+        const elapsed = nowMs - overlay.startedAtMs;
+        if (elapsed >= overlay.totalDurationMs) {
+            overlay.active = false;
+            return;
+        }
+
+        let alphaRate = 1;
+        if (elapsed > overlay.fadeStartMs) {
+            const fadeDuration = Math.max(1, overlay.totalDurationMs - overlay.fadeStartMs);
+            alphaRate = 1 - (elapsed - overlay.fadeStartMs) / fadeDuration;
+        }
+        alphaRate = Math.max(0, Math.min(1, alphaRate));
+
+        const centerY = p.height * 0.28;
+        const bandH = Math.max(46, p.height * 0.072);
+        const coreBandW = p.width * 0.54;
+        const sideFadeOuterW = p.width * 0.3;
+        const sideFadeInnerExtendW = p.width * 0.08;
+        const sideFadeW = sideFadeOuterW + sideFadeInnerExtendW;
+        const bandY = centerY - bandH * 0.5;
+        const coreBandX = (p.width - coreBandW) * 0.5;
+        const leftOuterX = coreBandX - sideFadeOuterW;
+        const rightOuterX = coreBandX + coreBandW + sideFadeOuterW - 1;
+
+        p.push();
+        p.resetMatrix();
+        p.noStroke();
+
+        // Keep top/bottom edges crisp; only keep left/right side gradients.
+        for (let i = 0; i < sideFadeW; i++) {
+            const t = i / Math.max(1, sideFadeW - 1);
+            const a = (1 - t) * 108 * alphaRate;
+            p.fill(255, 255, 255, a);
+
+            // Keep outer edges fixed; grow only inward.
+            p.rect(leftOuterX + i, bandY, 1, bandH, 0);
+            p.rect(rightOuterX - i, bandY, 1, bandH, 0);
+        }
+
+        const titleText = t(overlay.titleKey);
+        p.fill(255, 255, 255, 248 * alphaRate);
+        p.textAlign(p.CENTER, p.CENTER);
+        if (Assets.customFont) {
+            p.textFont(Assets.customFont);
+        }
+        p.textStyle(p.BOLD);
+        p.textSize(Math.max(26, Math.floor(p.width * 0.03)));
+        p.text(titleText, p.width * 0.5, centerY);
+
+        p.pop();
+    }
+
+    updateCameraNudge() {
+        if(!this.level || typeof this.level.referenceOfPlayer !== "function") {
+            this.cameraNudgeX = 0;
+            return;
+        }
+
+        const player = this.level.referenceOfPlayer();
+        const velX = player?.movementComponent?.velX ?? 0;
+        if(Math.abs(velX) <= 0.06) {
+            // 松开移动键后保持当前位置，不回弹到中心
+            return;
+        }
+
+        const moveSpeed = player?.controllerManager?.currentControlComponent?.moveSpeed ?? 4;
+        const speedRatio = Math.min(1, Math.abs(velX) / Math.max(0.001, moveSpeed));
+        const targetNudge = Math.sign(velX) * this.maxCameraNudgeX * speedRatio;
+
+        this.cameraNudgeX += (targetNudge - this.cameraNudgeX) * this.cameraNudgeLerp;
+    }
+
     loadLevel(levelIndex, p = this.p, eventBus = this.eventBus) {
         if(!this.level) {
             const LevelClass = this.levelMap[levelIndex];
             this.level = new LevelClass(p, eventBus);
             this.currentLevelIndex = levelIndex;
+            this.cameraNudgeX = 0;
+            this.startLevelTitleOverlay(levelIndex, p);
             console.log("load level: " + levelIndex);
         }
     }
@@ -28,24 +129,38 @@ export class LevelManager {
         if(this.level) {
             this.level.clearLevel(p, eventBus);
             this.level = null;
+            this.cameraNudgeX = 0;
             console.log("unload level");
         }
     }
     update(p = this.p, eventBus = this.eventBus) {
-        if(this.level) {
-            this.flipY(p);
-            this.level.clearCanvas && this.level.clearCanvas(p);
-            if(!this.paused) {
-                this.level.updatePhysics && this.level.updatePhysics(p);
-                this.level.updateCollision && this.level.updateCollision(p, eventBus);
-                // 检测死亡的玩家是否超出画面
-                this.checkDeadPlayerOutOfBounds(p, eventBus);
-            }
-           
-            if(this.level) {
-                this.level.draw && this.level.draw(p);
-            }
+        if(!this.level) {
+            return;
         }
+
+        if(!this.paused) {
+            this.level.updatePhysics && this.level.updatePhysics(p);
+            this.level.updateCollision && this.level.updateCollision(p, eventBus);
+            // 检测死亡的玩家是否超出画面
+            this.checkDeadPlayerOutOfBounds(p, eventBus);
+        }
+
+        // 死亡结算等事件可能在同一帧中卸载关卡，后续不应继续访问 this.level
+        if(!this.level) {
+            return;
+        }
+
+        this.updateCameraNudge();
+        const renderNudgeX = Math.round(this.cameraNudgeX);
+        this.flipY(p);
+        this.level.clearCanvas && this.level.clearCanvas(p, renderNudgeX, this.bgParallaxFactor);
+
+        p.push();
+        p.translate(-renderNudgeX, 0);
+        this.level.draw && this.level.draw(p);
+        p.pop();
+
+        this.drawLevelTitleOverlay(p);
     }
 
     setPaused(paused) {

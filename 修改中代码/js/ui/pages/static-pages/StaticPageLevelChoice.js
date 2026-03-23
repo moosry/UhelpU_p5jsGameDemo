@@ -26,27 +26,27 @@ export class StaticPageLevelChoice extends PageBase {
     this.addElement(backBtn);
 
     // Level 1 按钮
-    const level1Btn = new ButtonBase(p, ' ', 0.13 * p.width, 0.448 * p.height, () => {
+    const level1Btn = new ButtonBase(p, ' ', 0.125 * p.width, 0.441 * p.height, () => {
       this.eventBus.publish("loadLevel", "level1");
     }, 'level1-button');
     level1Btn.btn.style('width', 0.050 * p.width + 'px');
-    level1Btn.btn.style('height', 0.056 * p.height + 'px');
+    level1Btn.btn.style('height', 0.048 * p.height + 'px');
     this.addElement(level1Btn);
 
     // Level 2 按钮
-    const level2Btn = new ButtonBase(p, ' ', 0.305 * p.width, 0.449 * p.height, () => {
+    const level2Btn = new ButtonBase(p, ' ', 0.3 * p.width, 0.441 * p.height, () => {
       this.eventBus.publish("loadLevel", "level2");
     }, 'level2-button');
     level2Btn.btn.style('width', 0.051 * p.width + 'px');
-    level2Btn.btn.style('height', 0.056 * p.height + 'px');
+    level2Btn.btn.style('height', 0.048 * p.height + 'px');
     this.addElement(level2Btn);
 
     // Level 3 按钮
-    const level3Btn = new ButtonBase(p, ' ', 0.48 * p.width, 0.449 * p.height, () => {
+    const level3Btn = new ButtonBase(p, ' ', 0.477 * p.width, 0.441 * p.height, () => {
       this.eventBus.publish("loadLevel", "level3");
     }, 'level3-button');
-    level3Btn.btn.style('width', 0.051 * p.width + 'px');
-    level3Btn.btn.style('height', 0.056 * p.height + 'px');
+    level3Btn.btn.style('width', 0.049 * p.width + 'px');
+    level3Btn.btn.style('height', 0.048 * p.height + 'px');
     this.addElement(level3Btn);
 
     // 跟随鼠标的动图
@@ -54,9 +54,9 @@ export class StaticPageLevelChoice extends PageBase {
       p,
       Assets.followerImg2,
       p.width * 0.5,
-      p.height * 0.11,
-      0.047 * p.width,
-      80
+      p.height * 0.115,
+      0.04 * p.width,
+      60
     );
   }
 

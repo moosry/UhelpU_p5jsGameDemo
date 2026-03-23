@@ -73,10 +73,12 @@ export class BaseLevel {
         this.syncSystemsEntities();
     }
 
-    clearCanvas(p = this.p) {
+    clearCanvas(p = this.p, cameraNudgeX = 0, bgParallaxFactor = 1) {
         const bg = this.bgAssetKey ? Assets[this.bgAssetKey] : null;
         if (bg) {
+            const bgOffsetX = Math.round(cameraNudgeX * bgParallaxFactor);
             p.push();
+            p.translate(-bgOffsetX, 0);
             p.scale(1, -1);
             p.image(bg, 0, -p.height, p.width, p.height);
             p.pop();

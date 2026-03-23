@@ -6,13 +6,14 @@ const _dict = {
   en: {
     // ── Menu ─────────────────────────────────────────────────────────
     btn_play:       'PLAY',
-    btn_settings:   'SETTINGS',
+    btn_settings:   'Settings',
     btn_credits:    'Credits',
+    menu_subtitle:  '----   you help you   ----',
 
     // ── Opening Story ────────────────────────────────────────────────
     btn_skip:       'PRESS [ENTER] TO SKIP',
-    notebook_front: '[HOW TO PLAY]<br>&nbsp;&nbsp;&nbsp;<br>&nbsp;&nbsp;press [R]<br>&nbsp;&nbsp;&nbsp;&nbsp;<br>> Record<br>> End Record<br>> Replay<br>> End Replay',
-    notebook_back:  '&nbsp;use [WASD]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>Enter the door<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>&nbsp;>&nbsp;>&nbsp;WIN&nbsp;<&nbsp;<&nbsp;',
+    notebook_front: 'This is you<br>Just go with it<br>I don\'t know what to write here and it\'s annoying',
+    notebook_back:  'This is also you<br>Pretty smart eyes',
     story_loading:  'Loading story...',
 
     // ── Result ───────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ const _dict = {
     pause_back_menu:'⏏  Back to Menu',
     hint_title:     '💡  Hint',
     hint_level1:    'Level 1 hint example',
-    hint_level2:    'Level 2 hint example',
+    hint_level2:    'use the recording to jump on your own head, then jump to the portal',
     hint_level3:    'Level 3 hint example',
     keybind_reset_title: 'Reset to default',
     keybind_conflict: 'The key {KEY} is already bound to {ACTION}',
@@ -63,6 +64,9 @@ const _dict = {
     rec_blocked_air:       'Land first to record!',
     level1_missed_prompt:  'Wait... did I just miss something?',
     level1_replay_prompt:  '...He is repeating every step I just did.\nI think... I cannot touch him?',
+    level1_title:          'Level 1 Title Placeholder',
+    level2_title:          'Level 2 Title Placeholder',
+    level3_title:          'Level 3 Title Placeholder',
     module_btn_label:      'Install Module',
     module_installation_complete: 'Installation Complete',
     click_to_close:        'Click anywhere to close',
@@ -72,12 +76,13 @@ const _dict = {
     // ── Menu ─────────────────────────────────────────────────────────
     btn_play:       '开始',
     btn_settings:   '设置',
-    btn_credits:    '制作人员',
+    btn_credits:    '关于',
+    menu_subtitle:  '----   自己靠自己   ----',
 
     // ── Opening Story ────────────────────────────────────────────────
     btn_skip:       '按 [ENTER] 跳过',
-    notebook_front: '这里应该不写游戏操作比较好？[游戏操作]<br>&nbsp;&nbsp;&nbsp;<br>&nbsp;&nbsp;按 [R]<br>&nbsp;&nbsp;&nbsp;&nbsp;<br>> 开始录制<br>> 结束录制<br>> 开始回放<br>> 结束回放',
-    notebook_back:  '不知道写什么很烦&nbsp;用 [WASD]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>进入门<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>&nbsp;>&nbsp;>&nbsp;胜利&nbsp;<&nbsp;<&nbsp;',
+    notebook_front: '这是你<br>将就着看吧<br>这里不知道写什么很烦',
+    notebook_back:  '这面都被你发现了<br>这也是你<br>眼神比较智慧',
     story_loading:  '故事加载中...',
 
     // ── Result ───────────────────────────────────────────────────────
@@ -102,7 +107,7 @@ const _dict = {
     pause_back_level_choice: '🗺  返回关卡选择',
     pause_back_menu:'⏏  返回菜单',
     hint_title:     '💡  提示',
-    hint_level1:    'level1提示实例',
+    hint_level1:    '在平台下面录制自己，不要乱移动，结束录制之后按回放键，踩着自己的头跳上去',
     hint_level2:    'level2提示实例',
     hint_level3:    'level3提示实例',
     keybind_reset_title: '重置为默认',
@@ -128,13 +133,36 @@ const _dict = {
     rec_blocked_air:       '落地后才能录制！',
     level1_missed_prompt:  '等等，我刚刚是不是错过了什么？',
     level1_replay_prompt:  '……他在重复我刚才做的每一步。\n我好像……碰不到他？',
+    level1_title:          '规则',
+    level2_title:          '通电',
+    level3_title:          'Level3标题占位',
     module_btn_label:      '安装模块',
     module_installation_complete: '安装完成',
     click_to_close:        '点击任意处关闭',
   },
 };
 
-let _lang = 'en';
+const LANG_STORAGE_KEY = 'kinoko_lang';
+
+function _loadSavedLang() {
+  try {
+    const saved = localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved && _dict[saved]) return saved;
+  } catch (e) {
+    // Ignore localStorage access errors (e.g. private mode restrictions)
+  }
+  return 'en';
+}
+
+function _saveLang(lang) {
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, lang);
+  } catch (e) {
+    // Ignore localStorage write errors
+  }
+}
+
+let _lang = _loadSavedLang();
 const _listeners = [];
 
 export const i18n = {
@@ -142,6 +170,7 @@ export const i18n = {
   setLang(lang) {
     if (!_dict[lang] || _lang === lang) return;
     _lang = lang;
+    _saveLang(lang);
     _listeners.forEach(fn => fn(lang));
   },
 

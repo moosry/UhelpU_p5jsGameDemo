@@ -38,7 +38,9 @@ export class Player extends Character {
                 this._trailEmitAccumulator = 0;
                 this._jumpRingEffects = [];
                 this._jumpBurstParticles = [];
+                this._landingDustParticles = [];
                 this._wasOnGround = true;
+                this._prevVelY = 0;
                 this._trailFacing = 1;
     }
     createListeners() {
@@ -81,6 +83,57 @@ export class Player extends Character {
                 maxLife: life,
             });
         }
+    }
+
+    _spawnLandingDust(p, drawX, drawY, impactVelY) {
+        const count = Math.floor(Math.min(Math.abs(impactVelY) * 1.6, 14));
+        for (let i = 0; i < count; i++) {
+            // 左右交替从角色两侧脚底喷出，不从中间生成（避免被贴图遮盖）
+            const side = (i % 2 === 0) ? -1 : 1;
+            const speed = p.random(1.2, 3.0);
+            const angle = p.random(0.05, 0.38); // 接近水平的扇形
+            const life = Math.floor(p.random(12, 22));
+            // 起点在角色左侧或右侧边缘外
+            const spawnX = side < 0
+                ? drawX - p.random(2, 6)
+                : drawX + this.collider.w + p.random(2, 6);
+            this._landingDustParticles.push({
+                x: spawnX,
+                y: drawY + p.random(0, 4),
+                vx: Math.cos(angle) * speed * side,
+                vy: Math.sin(angle) * speed * 0.3,
+                size: p.random(3, 6),
+                life,
+                maxLife: life,
+            });
+        }
+    }
+
+    _updateLandingDust() {
+        for (let i = this._landingDustParticles.length - 1; i >= 0; i--) {
+            const d = this._landingDustParticles[i];
+            d.x += d.vx;
+            d.y += d.vy;
+            d.vx *= 0.88;
+            d.vy *= 0.82;
+            d.life -= 1;
+            if (d.life <= 0) {
+                this._landingDustParticles.splice(i, 1);
+            }
+        }
+    }
+
+    _drawLandingDust(p) {
+        if (this._landingDustParticles.length === 0) return;
+        p.push();
+        p.noStroke();
+        for (const d of this._landingDustParticles) {
+            const t = d.life / d.maxLife;
+            const alpha = Math.floor(t * 160);
+            p.fill(195, 178, 155, alpha);
+            p.circle(d.x, d.y, d.size * t + 1);
+        }
+        p.pop();
     }
 
     _spawnJumpRing(p, drawX, drawY) {
@@ -172,6 +225,7 @@ export class Player extends Character {
             this._trailEmitAccumulator = 0;
             this._jumpRingEffects = [];
             this._jumpBurstParticles = [];
+            this._landingDustParticles = [];
             this._wasOnGround = true;
             const deadSprite = Assets.playerImg_dead;
             if (deadSprite) {
@@ -191,7 +245,13 @@ export class Player extends Character {
         if (this._wasOnGround && !isOnGround && this.movementComponent.velY > 0.12) {
             this._spawnJumpRing(p, this.x, this.y);
         }
+        // 落地检测：上一帧在空中、本帧在地面，且有一定下落速度
+        if (!this._wasOnGround && isOnGround && this._prevVelY < -1.5) {
+            this._spawnLandingDust(p, this.x, this.y, this._prevVelY);
+        }
+        this._prevVelY = this.movementComponent.velY;
         this._updateJumpEffects();
+        this._updateLandingDust();
 
         const isMoving = Math.abs(this.movementComponent.velX) > 0.08;
         const isAirTrail = !isOnGround && (Math.abs(this.movementComponent.velY) > 0.12 || Math.abs(this.movementComponent.velX) > 0.05);
@@ -244,5 +304,8 @@ export class Player extends Character {
             p.fill(100, 200, 255);
             p.rect(this.x, this.y, this.collider.w, this.collider.h);
         }
+
+        // 落地灰尘在贴图之后绘制，确保显示在角色两侧不被遮挡
+        this._drawLandingDust(p);
     }
 }

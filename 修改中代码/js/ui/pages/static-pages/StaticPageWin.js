@@ -5,10 +5,11 @@ import { Assets } from "../../../AssetsManager.js";
 import { AudioManager } from '../../../AudioManager.js';
 
 export class StaticPageWin extends PageBase {
-  constructor(levelIndex, switcher, p) {
+  constructor(levelIndex, switcher, p, eventBus) {
     super(switcher);
     this.levelIndex = levelIndex;
     this.p = p;
+    this.eventBus = eventBus;
 
     const levelNum = parseInt(this.levelIndex.replace("level", ""), 10);
     const TOTAL_LEVELS = 3;
@@ -22,14 +23,14 @@ export class StaticPageWin extends PageBase {
     this.addElement(backBtn);
 
     const restartBtn = new ButtonBase(p, t('btn_restart'), p.width / 2 - 60, btnY0 + 56, () => {
-      this.switcher.gameSwitcher.loadLevel(levelNum, p);
+      this.eventBus.publish("loadLevel", `level${levelNum}`);
     }, 'restart-button');
     restartBtn.btn.style('font-size', '20px');
     this.addElement(restartBtn);
 
     if (levelNum < TOTAL_LEVELS) {
       const nextBtn = new ButtonBase(p, t('btn_next_level'), p.width / 2 - 60, btnY0 + 112, () => {
-        this.switcher.gameSwitcher.loadLevel(levelNum + 1, p);
+        this.eventBus.publish("loadLevel", `level${levelNum + 1}`);
       }, 'next-button');
       nextBtn.btn.style('font-size', '20px');
       this.addElement(nextBtn);
