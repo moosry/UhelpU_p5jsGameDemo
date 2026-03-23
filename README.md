@@ -1,25 +1,22 @@
-# Game1
+#U HELP U开发中
+增加LEVEL3之后修bug修了6h没修好，无能狂怒把LEVEL3删除之后
 
-## Getting Started
+因为没有做好版本备份
 
-Open `index.html` in your web browser and start editing `sketch.js`.
+影响了level1和level2的内容
 
-## Running Locally
+所以发现代码结构还是有很大的问题
 
-For projects with media files, use a local server:
+我做Level3凭什么会影响Level1和2?????
 
-```bash
-# Using Python
-python -m http.server 8000
+于是重新修改代码结构的工作又重新开始了
 
-# Using Node.js
-npx http-server
+这一步费时间还容易改出各种新bug
 
-# Using VS Code Live Server extension
-# Right-click index.html -> "Open with Live Server"
-```
+而且改完了之后游戏表面看起来没有任何变化
 
-## Resources
+说白了就是看起来没有任何进展
 
-- [p5.js 2.0](https://beta.p5js.org/)
-- [p5.js Reference](https://p5js.org/reference/)
+但是重构代码的最终结果就是为了让表面看起来没有变化
+
+因为真的很容易全是变化（全是bug）
